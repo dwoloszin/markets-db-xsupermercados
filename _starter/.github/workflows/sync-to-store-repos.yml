@@ -1,0 +1,197 @@
+name: Sync to Store Repos
+
+# Automatically pushes code changes from the master repo to all store repos.
+# Triggered manually (workflow_dispatch) — enable push trigger when ready.
+#
+# Required secrets on the MASTER repo:
+#   DB_ARCHIVE_GITHUB_TOKEN  — PAT with contents:write on all store repos
+#   GITHUB_ORG               — your GitHub username/org (optional, auto-detected)
+
+on:
+  # push trigger disabled — re-enable when GitHub Actions minutes are available
+  # push:
+  #   branches: [main]
+  #   paths-ignore:
+  #     - 'deploy/**'
+  #     - '**.md'
+  #     - '.gitignore'
+  workflow_dispatch:
+    inputs:
+      stores:
+        description: "Stores to sync (comma-separated, empty = all)"
+        required: false
+        default: ""
+      force:
+        description: "Force push (overwrite remote history)"
+        required: false
+        default: "false"
+        type: choice
+        options: ["false", "true"]
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout master repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Configure git
+        run: |
+          git config --global user.name  "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Detect GitHub org
+        id: org
+        run: |
+          ORG="${{ secrets.GITHUB_ORG }}"
+          if [ -z "$ORG" ]; then
+            ORG=$(echo "${{ github.repository }}" | cut -d'/' -f1)
+          fi
+          echo "org=$ORG" >> $GITHUB_OUTPUT
+          echo "Syncing as: $ORG"
+
+      - name: Sync to store repos
+        env:
+          GH_TOKEN: ${{ secrets.DB_ARCHIVE_GITHUB_TOKEN }}
+          ORG:      ${{ steps.org.outputs.org }}
+          STORES:   ${{ inputs.stores }}
+          FORCE:    ${{ inputs.force }}
+        run: |
+          python3 << 'PYEOF'
+          import os, subprocess, shutil, re, unicodedata
+          from pathlib import Path
+
+          ORG         = os.environ["ORG"]
+          FORCE       = os.environ.get("FORCE", "false").lower() == "true"
+          STORES_INPUT = os.environ.get("STORES", "").strip()
+
+          REPO_PREFIX = "stores-db"
+
+          # ── Per-store cron schedules ──────────────────────────────────────────
+          # Add one entry per store. The cron is injected into each store's
+          # scrape.yml workflow. Uses Dec-1st-only to disable; change to
+          # "0 17 * * *" style when ready to run daily.
+          STORE_SCHEDULE = {
+              # "Drogaria Example": "0 17 1 12 *",   # disabled; change to daily when ready
+          }
+
+          def repo_slug(name):
+              n = unicodedata.normalize("NFD", name.lower())
+              n = "".join(c for c in n if unicodedata.category(c) != "Mn")
+              n = n.replace(" ", "-").replace("/", "-")
+              n = re.sub(r"[^a-z0-9-]", "", n)
+              n = re.sub(r"-+", "-", n).strip("-")
+              return f"{REPO_PREFIX}-{n}"
+
+          def run(cmd, cwd=None, check=True):
+              return subprocess.run(cmd, cwd=cwd, check=check,
+                                    capture_output=True, text=True)
+
+          template_candidates = [
+              Path("deploy/store-scrape.yml"),
+              Path(".github/workflows/store-scrape.yml"),
+          ]
+          template_path = next((p for p in template_candidates if p.exists()), None)
+          if template_path is None:
+              searched = ", ".join(str(p) for p in template_candidates)
+              raise FileNotFoundError(f"store workflow template not found. Searched: {searched}")
+          WORKFLOW_TEMPLATE = template_path.read_text(encoding="utf-8")
+
+          def build_workflow(store_name):
+              cron = STORE_SCHEDULE.get(store_name)
+              if not cron:
+                  return WORKFLOW_TEMPLATE
+              return re.sub(
+                  r"(- cron: ')[^']*(' +# Every Monday.*)",
+                  f"\\g<1>{cron}\\g<2>",
+                  WORKFLOW_TEMPLATE,
+              )
+
+          stores = (
+              [s.strip() for s in STORES_INPUT.split(",") if s.strip()]
+              if STORES_INPUT else list(STORE_SCHEDULE.keys())
+          )
+
+          ok, failed = [], []
+
+          for store in stores:
+              slug = repo_slug(store)
+              full = f"{ORG}/{slug}"
+              print(f"\n-- {store} -> {full}")
+
+              import tempfile
+              with tempfile.TemporaryDirectory() as tmp:
+                  tmp_path = Path(tmp)
+                  work = tmp_path / slug
+
+                  token = os.environ.get("GH_TOKEN", "")
+                  clone_url = f"https://{token}@github.com/{full}.git"
+                  r = run(["git", "clone", clone_url, str(work)], cwd=tmp)
+                  if r.returncode != 0:
+                      print(f"  x Could not clone {full} — does it exist? Run deploy.py first.")
+                      failed.append(store)
+                      continue
+
+                  for item in work.iterdir():
+                      if item.name in (".git", ".github"):
+                          continue
+                      if item.is_dir():
+                          shutil.rmtree(item)
+                      else:
+                          item.unlink()
+
+                  src = Path(".")
+                  ignore = shutil.ignore_patterns(
+                      ".git", ".github", "__pycache__", "*.pyc", "deploy",
+                      ".venv", "venv", "env", "analysis_*.csv",
+                  )
+                  shutil.copytree(str(src), str(work), dirs_exist_ok=True, ignore=ignore)
+
+                  wf_dir = work / ".github" / "workflows"
+                  wf_dir.mkdir(parents=True, exist_ok=True)
+                  for legacy in ("sync-to-store-repos.yml", "store-scrape.yml", "scrape.yml"):
+                      lp = wf_dir / legacy
+                      if lp.exists():
+                          lp.unlink()
+
+                  (wf_dir / "scrape.yml").write_text(build_workflow(store), encoding="utf-8")
+
+                  deploy_dir = work / "deploy"
+                  if deploy_dir.exists():
+                      shutil.rmtree(deploy_dir)
+
+                  run(["git", "add", "--all"], cwd=work)
+                  r = run(["git", "diff", "--cached", "--quiet"], cwd=work, check=False)
+                  if r.returncode == 0:
+                      print(f"  -> No changes to push to {full}")
+                      ok.append(store)
+                      continue
+
+                  commit_msg = f"sync: {os.environ.get('GITHUB_SHA', 'manual')[:8]}"
+                  run(["git", "commit", "-m", commit_msg], cwd=work)
+                  push_url = f"https://{token}@github.com/{full}.git"
+                  run(["git", "remote", "set-url", "origin", push_url], cwd=work)
+                  push = ["git", "push", "--force"]
+                  r = run(push, cwd=work, check=False)
+                  if r.returncode == 0:
+                      print(f"  ok Synced {full}")
+                      ok.append(store)
+                  else:
+                      print(f"  x Push failed for {full}: {r.stderr}")
+                      failed.append(store)
+
+          print(f"\n{'='*50}")
+          print(f"SYNC COMPLETE: {len(ok)} ok, {len(failed)} failed")
+          if failed:
+              print(f"Failed: {failed}")
+              import sys; sys.exit(1)
+          PYEOF
