@@ -1,0 +1,156 @@
+# .github/workflows/scrape.yml
+#
+# Per-market scraper workflow.
+# This file is IDENTICAL across all market repos — the market is identified
+# by the MARKET_NAME secret set in each repo's Settings → Secrets.
+#
+# Required Secrets (set in each repo):
+#   MARKET_NAME          — e.g. "Swift" (must match config.py MARKET_TIER key)
+#   DATABASE_URL         — fallback DB if market-specific not set
+#   DATABASE_URL_MANAGER — shared catalog/mapping DB
+#   DATABASE_URL_{MARKET} — e.g. DATABASE_URL_SWIFT (auto-detected from MARKET_NAME)
+#   DB_ARCHIVE_GITHUB_TOKEN
+#   DB_ARCHIVE_GITHUB_REPO
+#   OPENROUTER_API_KEY   (optional — for AI barcode inference)
+#   GEMINI_API_KEY       (optional)
+#   XAI_API_KEY          (optional)
+#   HF_TOKEN             (optional)
+
+name: Market Scrape
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+on:
+  schedule:
+    - cron: '4 16 * * *'   # Every day at 16:00 UTC (placeholder — replaced per-market by sync)
+  workflow_dispatch:
+    inputs:
+      scrape_market:
+        description: "Optional market override (empty = use MARKET_NAME secret; empty secret = run all markets)"
+        required: false
+        default: ""
+      zip_code:
+        description: "ZIP code override (empty = use config.py default)"
+        required: false
+        default: ""
+      reset_before_run:
+        description: "Reset this market's DB tables before scraping"
+        required: false
+        default: "false"
+        type: choice
+        options: ["false", "true"]
+      run_storage_check:
+        description: "Force storage controller (archive if >420 MB)"
+        required: false
+        default: "false"
+        type: choice
+        options: ["false", "true"]
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install Playwright browsers
+        run: playwright install chromium --with-deps
+
+      - name: Create .env from secrets
+        shell: python
+        env:
+          ALL_SECRETS: ${{ toJSON(secrets) }}
+          MARKET_NAME: ${{ secrets.MARKET_NAME }}
+          INPUT_SCRAPE_MARKET: ${{ inputs.scrape_market }}
+        run: |
+          import os, json, re
+
+          secrets = json.loads(os.environ.get('ALL_SECRETS', '{}'))
+          input_market = os.environ.get('INPUT_SCRAPE_MARKET', '').strip()
+          secret_market = os.environ.get('MARKET_NAME', '').strip()
+          market_name = input_market or secret_market
+
+          # Derive the env-suffix for this market's DB URL
+          # e.g. "Swift" → "SWIFT", "Pão de Açúcar" → "PAODEACUCAR", "Sonda Delivery" → "SONDA"
+          suffix_map = {
+              'Rossi':          'ROSSI',
+              'Atacadão':       'ATACADAO',
+              'Nagumo':         'NAGUMO',
+              'Higas':          'HIGAS',
+              'Swift':          'SWIFT',
+              'Sonda Delivery': 'SONDA',
+              'XSupermercados': 'XSUPERMERCADOS',
+              'Barbosa':        'BARBOSA',
+              'Carrefour':      'CARREFOUR',
+              'Oba Hortifruti': 'OBA',
+              "Sam's Club":     'SAMSCLUB',
+                'Davo':           'DAVO',
+              'Giga':           'GIGA',
+              'Extra':          'EXTRA',
+              'Pão de Açúcar':  'PAODEACUCAR',
+              'Tenda Atacado':  'TENDA',
+          }
+
+          always_needed = {
+              'DATABASE_URL',
+              'DATABASE_URL_MANAGER',
+              'HF_TOKEN', 'HF_SPACE_ID',
+              'OPENROUTER_API_KEY', 'GEMINI_API_KEY', 'XAI_API_KEY',
+              'DB_ARCHIVE_GITHUB_TOKEN', 'DB_ARCHIVE_GITHUB_REPO',
+              'MARKET_NAME',
+          }
+
+          # Add this market's DB URL key
+          if market_name in suffix_map:
+              always_needed.add(f'DATABASE_URL_{suffix_map[market_name]}')
+
+          # Market-specific optional secrets
+          market_extra = {'Rossi': 'ROSSI_API_TOKEN'}
+          if market_name in market_extra:
+              always_needed.add(market_extra[market_name])
+
+          with open('.env', 'w') as f:
+              for key in always_needed:
+                  value = secrets.get(key, '')
+                  if value:
+                      f.write(f'{key}={value}\n')
+              # Also write SCRAPE_MARKET so main.py knows which market to run
+              if market_name:
+                  f.write(f'SCRAPE_MARKET={market_name}\n')
+                  f.write(f'MARKET_NAME={market_name}\n')
+
+          with open('.env', 'r') as f:
+              count = sum(1 for l in f if l.strip() and '=' in l)
+          mode = f"single-market ({market_name})" if market_name else "all-markets"
+          print(f'✅ Created .env with {count} variables | mode: {mode}')
+
+      - name: Optional reset before run
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.reset_before_run == 'true' }}
+        run: python reset_data.py market --yes
+        env:
+          SCRAPE_MARKET: ${{ inputs.scrape_market != '' && inputs.scrape_market || secrets.MARKET_NAME }}
+
+      - name: Run scraper
+        run: python main.py
+        env:
+          SCRAPE_ZIP_CODE: ${{ inputs.zip_code }}
+          SCRAPE_MARKET: ${{ inputs.scrape_market != '' && inputs.scrape_market || secrets.MARKET_NAME }}
+          MARKET_NAME: ${{ inputs.scrape_market != '' && inputs.scrape_market || secrets.MARKET_NAME }}
+
+      - name: Force storage controller
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_storage_check == 'true' }}
+        run: python -m db.storage_controller --force
+        env:
+          SCRAPE_MARKET: ${{ inputs.scrape_market != '' && inputs.scrape_market || secrets.MARKET_NAME }}
