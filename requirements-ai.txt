@@ -1,0 +1,5 @@
+# AI barcode inference (optional — only needed if ENABLE_AI_BARCODE_MATCH=1)
+sentence-transformers>=2.2.0
+
+# HuggingFace Space UI
+gradio>=4.0.0

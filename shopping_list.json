@@ -1,0 +1,26 @@
+{
+  "output_dir": "cart_output",
+  "markets": ["Rossi", "Atacadão", "Swift", "Carrefour"],
+  "items": [
+    {
+      "name": "Arroz tipo 1 5kg",
+      "quantity": 1,
+      "max_price": 35.0
+    },
+    {
+      "name": "Feijão carioca 1kg",
+      "quantity": 2,
+      "max_price": 11.5
+    },
+    {
+      "name": "Coca Cola Zero 350ml",
+      "brand": "Coca-Cola",
+      "quantity": 12,
+      "max_price": 4.5
+    },
+    {
+      "name": "Detergente líquido",
+      "quantity": 3
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "generated_at": "2026-04-03T20:32:16",
+  "markets": {
+    "Swift": {
+      "items_requested": 4,
+      "items_matched": 0,
+      "coverage": 0.0,
+      "estimated_total": 0.0,
+      "cart_csv": "cart_swift.csv",
+      "extra_artifacts": []
+    }
+  },
+  "unmatched_items": [
+    "Arroz tipo 1 5kg",
+    "Feijão carioca 1kg",
+    "Coca Cola Zero 350ml",
+    "Detergente líquido"
+  ]
+}

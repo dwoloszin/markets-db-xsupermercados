@@ -1,0 +1,42 @@
+{
+  "generated_at": "2026-04-03T20:37:35",
+  "markets": {
+    "Rossi": {
+      "items_requested": 4,
+      "items_matched": 1,
+      "coverage": 25.0,
+      "estimated_total": 53.94,
+      "cart_csv": "cart_rossi.csv",
+      "extra_artifacts": []
+    },
+    "Atacadão": {
+      "items_requested": 4,
+      "items_matched": 1,
+      "coverage": 25.0,
+      "estimated_total": 6.6,
+      "cart_csv": "cart_atacadao.csv",
+      "extra_artifacts": []
+    },
+    "Swift": {
+      "items_requested": 4,
+      "items_matched": 0,
+      "coverage": 0.0,
+      "estimated_total": 0.0,
+      "cart_csv": "cart_swift.csv",
+      "extra_artifacts": []
+    },
+    "Carrefour": {
+      "items_requested": 4,
+      "items_matched": 0,
+      "coverage": 0.0,
+      "estimated_total": 0.0,
+      "cart_csv": "cart_carrefour.csv",
+      "extra_artifacts": []
+    }
+  },
+  "unmatched_items": [
+    "Arroz tipo 1 5kg",
+    "Feijão carioca 1kg",
+    "Coca Cola Zero 350ml"
+  ]
+}

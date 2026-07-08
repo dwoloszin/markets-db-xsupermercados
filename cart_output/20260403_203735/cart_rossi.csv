@@ -1,0 +1,5 @@
+item_name,quantity,brand_preference,max_price,matched,matched_product_name,price,estimated_line_total,product_url,offer_id,score
+Arroz tipo 1 5kg,1.0,,35.0,no,,,,,,
+Feijão carioca 1kg,2.0,,11.5,no,,,,,,
+Coca Cola Zero 350ml,12.0,Coca-Cola,4.5,no,,,,,,
+Detergente líquido,3.0,,,yes,Detergente Líquido Para Roupas Omo +puro Cuidado 900ml Sachê,17.98,53.94,https://www.rossidelivery.com.br/produto/5751/detergente-liquido-para-roupas-omo-puro-cuidado-900ml-sache,rossi_eccbc87e_7891150064935,1.05

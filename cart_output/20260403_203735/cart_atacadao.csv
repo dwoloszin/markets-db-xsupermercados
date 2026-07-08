@@ -1,0 +1,5 @@
+item_name,quantity,brand_preference,max_price,matched,matched_product_name,price,estimated_line_total,product_url,offer_id,score
+Arroz tipo 1 5kg,1.0,,35.0,no,,,,,,
+Feijão carioca 1kg,2.0,,11.5,no,,,,,,
+Coca Cola Zero 350ml,12.0,Coca-Cola,4.5,no,,,,,,
+Detergente líquido,3.0,,,yes,Detergente Líquido Minuano Coco 500ml,2.2,6.6,https://www.atacadao.com.br/detergente-liquido-minuano-coco-frasco-com-500ml-29952-36480/p,atacadao_84472339_detergente-l-quido-minuano-coco-500ml,1.05

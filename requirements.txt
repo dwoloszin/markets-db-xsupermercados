@@ -1,0 +1,16 @@
+# Core HTTP / scraping
+requests>=2.31.0
+playwright>=1.40.0
+pycryptodome>=3.19.0
+Pillow>=10.0.0
+
+# PostgreSQL
+psycopg[binary]>=3.1.0
+
+# DB archival to Parquet (optional — only needed when DB approaches 500 MB)
+pandas>=2.0.0
+pyarrow>=14.0.0
+
+# Secret encryption for deploy.py
+PyNaCl>=1.5.0
+
