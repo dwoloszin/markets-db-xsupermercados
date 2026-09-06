@@ -1,16 +1,16 @@
-# Core HTTP / scraping
+# HTTP
 requests>=2.31.0
-playwright>=1.40.0
-pycryptodome>=3.19.0
-Pillow>=10.0.0
 
-# PostgreSQL
+# PostgreSQL (Neon). psycopg 3 with prepare_threshold=None works through Neon's pooler.
 psycopg[binary]>=3.1.0
 
-# DB archival to Parquet (optional — only needed when DB approaches 500 MB)
-pandas>=2.0.0
-pyarrow>=14.0.0
+# AES (CryptoJS-compatible) payloads for the applay platform (X Supermercados, Barbosa)
+pycryptodome>=3.19.0
 
-# Secret encryption for deploy.py
-PyNaCl>=1.5.0
+# OPTIONAL - only used as a last-resort fallback to rediscover rotating tokens
+# (Rossi VipCommerce bearer, applay Next.js action ids). Not needed for normal runs.
+# playwright>=1.40.0   (then: playwright install chromium)
 
+# OPTIONAL - Chrome TLS impersonation for hosts with aggressive bot detection (Higas/ibecom).
+# The Higas scraper uses it automatically when importable; plain requests otherwise.
+# curl_cffi>=0.7

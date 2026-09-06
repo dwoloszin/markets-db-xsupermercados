@@ -1,51 +1,38 @@
-# Python bytecode and caches
+# Python
 __pycache__/
 *.py[cod]
-*$py.class
-
-# Virtual environments
 .venv/
 venv/
 env/
-
-# IDE/editor files
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# Test and tooling caches
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 
-# Local environment files
-.env
-.env.*
-!.env.example
-
-# Project generated data exports
-analysis_*.csv
-export_*.csv
-
-# Runtime cache (local sync state; the shared timestamp lives in the DB)
-.cache/
-
-# Scratch/diagnostic scripts and backups
-_*.py
-*.bak-*
-
-# Local SQLite databases
-*.db
-*.sqlite
-*.sqlite3
-
-# OS artifacts
+# IDE / OS
+.vscode/
+.idea/
+*.swp
 .DS_Store
 Thumbs.db
 
+# Secrets
+.env
+.env.*
+!.env.template
 
-.claude
+# Runtime output
+logs/
+*.log
+exports/
+*.csv
+*.xlsx
+.cache/
 
-# Disaster recovery manifests contain DB passwords and access tokens — never commit
+# Local notes / scratch
+README_LOCAL.md
+.claude/
+_*.py
+*.bak-*
+
+# Old disaster-recovery manifests (contain passwords) - never commit
 deploy/disaster_recovery/
