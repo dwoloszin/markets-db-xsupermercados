@@ -126,8 +126,12 @@ Conventions: `CEP` = 8-digit ZIP; "inline" = barcode present in the listing;
   `flagtypes[]` = the promotions: `{"flagType":"NGM_26_M","valueFlag":7.59}` -> promo_price
   (flagType ending in `_M` = "Meu Nagumo" loyalty-app price, ~30% of the catalogue),
   `promotionDiscount` (null), `images.medium[0].absURL`, `productShowFullUrl`, `ATSInCurrentStore`.
-* Barcode: NONE in the listing any more (the old `upc` field disappeared in 2026; the JSON has
-  `customAttributes: {}`), PDP JSON-LD has only mpn/sku. Coverage = legacy table (~2k) + crossfill.
+* Barcode: NONE anywhere on the site (checked 2026-09-06): the old `upc` field is gone from the
+  listing JSON (`customAttributes: {}`), the PDP JSON-LD carries only mpn/sku, the search index
+  does not answer to a barcode query, and the Salesforce OCAPI (`/s/Nagumo/dw/shop/v21_3/...`)
+  rejects the client id found in the site JS. Coverage = legacy table (~2k) + the two crossfill
+  passes (exact name, then size-aware token set). Only the Nagumo mobile app could expose more
+  (its OCAPI client id would have to be captured with a proxy).
 * Runtime: ~4-5 min.
 
 ## Oba Hortifruti - `markets/oba` (VTEX)

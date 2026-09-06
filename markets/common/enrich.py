@@ -91,6 +91,8 @@ def fetch_page_gtin(session: requests.Session, url: str, *, allow_gtin8: bool = 
             continue
         if r.status_code != 200:
             return None, r.status_code
+        if not r.encoding or r.encoding.lower() in ("iso-8859-1", "latin-1"):
+            r.encoding = "utf-8"
         text = r.text
         return (gtin_from_jsonld(text, allow_gtin8=allow_gtin8)
                 or gtin_from_html_keys(text, allow_gtin8=allow_gtin8)), 200

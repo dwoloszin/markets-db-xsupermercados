@@ -63,11 +63,16 @@ no barcode at all.
 
 ## Cross-market fill (`tools/crossfill_barcodes.py`)
 
-Deterministic replacement for the old AI matcher:
+Deterministic replacement for the old AI matcher, two passes:
 
-* build `normalised name -> barcode` from every market that has barcodes,
-  keeping only names that map to exactly one barcode and have >= 3 tokens;
-* fill NULL rows whose normalised name is exactly equal.
+1. **exact**: `normalised name -> barcode` from every market that has barcodes,
+   keeping only names that map to exactly one barcode and have >= 3 tokens;
+   fills NULL rows whose normalised name is exactly equal (`crossfill`).
+2. **tokens**: order-independent token set with units normalised
+   (`"395 G"` = `"395g"`, `"1,5L"` = `"1.5l"`), filler words dropped
+   (de/com/pacote/lata...), and a size token REQUIRED so a size-less name can
+   never match a specific pack (`crossfill-tokens`). Audit with
+   `python -m tools.crossfill_barcodes --dry-run --show 30`.
 
 No fuzzy matching, no model, seconds to run, auditable (`barcode_source =
 'crossfill'`, revert with one UPDATE). It mainly helps Nagumo and Higas, whose

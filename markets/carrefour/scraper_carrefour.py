@@ -169,6 +169,7 @@ def _fetch_category(pool: ThreadSessions, category: str, store_id: str, cookies:
         r = request_with_retry(session, "GET", url, timeout=40, max_attempts=4, log_prefix="[carrefour] ")
         if r is None or r.status_code != 200:
             break
+        r.encoding = "utf-8"  # the page is UTF-8 but sends no charset -> requests would guess latin-1 (mojibake)
         if looks_like_challenge(r.text):
             print(f"[carrefour] captcha page for {category} p{page} - pausing 30s")
             time.sleep(30)
