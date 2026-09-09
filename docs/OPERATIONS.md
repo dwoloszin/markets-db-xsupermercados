@@ -56,6 +56,9 @@ python -m db.db_manager stats                        # coverage, freshness, DB s
 python -m db.db_manager mark-stale all --hours 48    # offers not seen for 48h -> is_available=false
 python -m db.db_manager prune all --days 180         # trim price_history (Neon free tier = 500 MB)
 python -m db.db_manager drop-legacy all              # drop offers_legacy tables when no longer needed
+python -m db.db_manager stores nagumo                # store_ids in a market DB (rows, barcodes, last update)
+python -m db.db_manager drop-store nagumo M_29       # remove a wrongly selected store (all its rows)
+python -m tools.crossfill_barcodes --fuzzy 0.8       # name-based barcode fill incl. the Jaccard pass
 python -m db.db_manager export atacadao              # offers + price_history CSV
 python -m db.db_manager export-all-together          # one barcode-keyed CSV, all markets
 python -m db.db_manager sync-hub                     # optional consolidated app_offers in DATABASE_URL_HUB
@@ -71,7 +74,7 @@ python -m db.db_manager sync-hub                     # optional consolidated app
 | a market saves 0 offers and the run is red | the site changed. Run the scraper directly with `--limit 20`; compare with the endpoint notes in docs/MARKETS.md. |
 | Rossi/Davo `login failed` | VipCommerce rotated the shared key: capture it (docs/LESSONS.md, "intercept") and set `VIPCOMMERCE_LOGIN_KEY` or `<MARKET>_API_TOKEN`. |
 | X Supermercados `could not obtain an API token` | Next.js action id rotated; the client scans the page/chunks and, if Playwright is installed, the rendered page. Set `XSUPER_TOKEN_ACTION_ID` once found. |
-| Higas `blocked by Cloudflare challenge` | rate; re-run later or from another IP. The store endpoint (apiv3/store) still works. |
+| Higas `Acesso bloqueado` | the IP is banned for hours; the next scheduled run (another runner IP) recovers. Never test from a banned IP; use `--probe` on a runner. |
 | Carrefour `captcha page` | pause is automatic; category HTML rarely gets challenged, GraphQL always does (that is why we parse HTML). |
 | Extra/PdA `storeId ... empty` | the API silently answers nothing for an unknown storeId; the client falls back through `gpa_store_ids`. |
 | Neon DB near 500 MB | `prune` more aggressively, `drop-legacy`, check `stats`. |

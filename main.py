@@ -53,6 +53,8 @@ def _build_cmd(store: str, args: argparse.Namespace) -> List[str]:
         cmd += ["--skip-enrich"]
     if args.enrich_only:
         cmd += ["--enrich-only"]
+    if args.probe:
+        cmd += ["--probe"]
     return cmd
 
 
@@ -195,6 +197,7 @@ def main() -> None:
     parser.add_argument("--log", action="store_true", help="Write per-market logs to logs/")
     parser.add_argument("--skip-enrich", action="store_true", help="Scrape only (no barcode backfill)")
     parser.add_argument("--enrich-only", action="store_true", help="Barcode backfill only (no scrape)")
+    parser.add_argument("--probe", action="store_true", help="Run each market's endpoint diagnostics instead of scraping")
     parser.add_argument("--only-stale", action="store_true", help="Run only markets whose data is older than --stale-hours")
     parser.add_argument("--stale-hours", type=int, default=24)
     parser.add_argument("--post", action="store_true", help="After scraping: mark-stale + prune for the markets that ran")

@@ -6,6 +6,7 @@ A scraper module only has to expose:
     STORE_KEY = "atacadao"
     def scrape(db, zip_code: str, limit: Optional[int]) -> dict   # saves via db.save()
     (optional) def enrich(db, workers: int, limit: Optional[int]) -> dict
+    (optional) def probe(zip_code: str) -> None      # endpoint diagnostics, run with --probe
 
 and finish with:
 
@@ -50,7 +51,8 @@ class ScrapeStats:
                 "with_barcode": self.with_barcode, "batches": self.batches}
 
 
-def run_cli(store_key: str, scrape: Callable, *, enrich: Optional[Callable] = None) -> None:
+def run_cli(store_key: str, scrape: Callable, *, enrich: Optional[Callable] = None,
+            probe: Optional[Callable] = None) -> None:
     parser = argparse.ArgumentParser(description=f"Scrape {store_key} -> PostgreSQL (Neon)")
     parser.add_argument("--limit", type=int, default=None, help="Stop after N products (test mode)")
     parser.add_argument("--zip", type=str, default=None, help="CEP used to pick the store (default: config/SCRAPE_ZIP_CODE)")
@@ -59,6 +61,7 @@ def run_cli(store_key: str, scrape: Callable, *, enrich: Optional[Callable] = No
     parser.add_argument("--workers", type=int, default=12, help="Threads for barcode enrichment")
     parser.add_argument("--skip-enrich", action="store_true", help="Skip the inline barcode enrichment step")
     parser.add_argument("--enrich-only", action="store_true", help="Only run barcode enrichment (no scrape)")
+    parser.add_argument("--probe", action="store_true", help="Run the market's diagnostic probe (endpoint checks) and exit")
     args = parser.parse_args()
 
     from db.db_manager import load_env, open_store_db
@@ -66,6 +69,12 @@ def run_cli(store_key: str, scrape: Callable, *, enrich: Optional[Callable] = No
 
     load_env(args.env)
     zip_code = args.zip or config.SCRAPE_ZIP_CODE
+    if args.probe:
+        if probe is None:
+            print(f"[{store_key}] no probe defined")
+            sys.exit(0)
+        probe(zip_code)
+        sys.exit(0)
     t0 = time.time()
     db = open_store_db(store_key)
     ok = True

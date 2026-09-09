@@ -9,6 +9,10 @@ tool reuses what the other markets already know, in two passes:
   2. tokens - order-independent token set, units normalised
               ("395 G" = "395g", "1,5L" = "1.5l"), filler words
               dropped, a SIZE TOKEN REQUIRED                  -> barcode_source = 'crossfill-tokens'
+  3. --fuzzy T  best Jaccard similarity between token sets that share the same
+              size token, accepted when >= T. Measured on Nagumo 2026-09-06:
+              T=0.8 -> +1,153 barcodes, samples all correct; T=0.7 -> wrong
+              matches appear. Use 0.8.                       -> barcode_source = 'crossfill-jaccard'
 
 Both passes only use names that map to exactly ONE barcode across all markets
 (ambiguous names are dropped) and need >= 3 tokens. No fuzzy matching, no
@@ -20,6 +24,8 @@ Usage:
     python -m tools.crossfill_barcodes                       # targets: every market
     python -m tools.crossfill_barcodes --targets nagumo higas
     python -m tools.crossfill_barcodes --dry-run --show 30   # audit the token matches first
+    python -m tools.crossfill_barcodes --fuzzy 0.8 --targets nagumo --dry-run --show 40   # audit pass 3
+    python -m tools.crossfill_barcodes --fuzzy 0.8 --targets nagumo                      # apply pass 3
 """
 
 from __future__ import annotations
@@ -59,6 +65,13 @@ def token_key(name: object) -> Optional[FrozenSet[str]]:
     return frozenset(toks)
 
 
+def size_token(tk: FrozenSet[str]) -> Optional[str]:
+    for t in tk:
+        if _SIZE_RE.match(t):
+            return t
+    return None
+
+
 def build_reference(stores: List[str]) -> Tuple[Dict[str, str], Dict[FrozenSet[str], str]]:
     names: Dict[str, Set[str]] = defaultdict(set)
     tokens: Dict[FrozenSet[str], Set[str]] = defaultdict(set)
@@ -91,8 +104,15 @@ def build_reference(stores: List[str]) -> Tuple[Dict[str, str], Dict[FrozenSet[s
 
 
 def fill(targets: List[str], ref: Dict[str, str], tref: Dict[FrozenSet[str], str],
-         dry_run: bool, show: int = 0) -> int:
+         dry_run: bool, show: int = 0, fuzzy: float = 0.0) -> int:
     total = 0
+    # optional third pass: best Jaccard similarity of token sets sharing the SAME size token
+    by_size: Dict[str, List[Tuple[FrozenSet[str], str]]] = defaultdict(list)
+    if fuzzy:
+        for tk, bc in tref.items():
+            sz = size_token(tk)
+            if sz:
+                by_size[sz].append((tk, bc))
     for key in targets:
         if not os.environ.get(str(config.STORES[key]["db_env"])):
             continue
@@ -110,18 +130,27 @@ def fill(targets: List[str], ref: Dict[str, str], tref: Dict[FrozenSet[str], str
                     tk = token_key(name)
                     b = tref.get(tk) if tk else None
                     source = "crossfill-tokens"
+                    if not b and fuzzy and tk:
+                        best, best_bc = 0.0, None
+                        for rt, rbc in by_size.get(size_token(tk) or "", []):
+                            j = len(tk & rt) / len(tk | rt)
+                            if j > best:
+                                best, best_bc = j, rbc
+                        if best_bc and best >= fuzzy:
+                            b, source = best_bc, "crossfill-jaccard"
                 if b:
                     updates.append((store_id, product_id, b, source))
-                    if show > 0 and source == "crossfill-tokens":
-                        print(f"      token match: {str(name)[:60]:<60} -> {b}")
+                    if show > 0 and source != "crossfill":
+                        print(f"      {source:<17} {str(name)[:60]:<60} -> {b}")
                         show -= 1
             n = 0 if dry_run else db.update_barcodes(updates)
             db.close()
         except Exception as exc:
             print(f"  [{key}] error: {exc}")
             continue
+        n_j = sum(1 for u in updates if u[3] == "crossfill-jaccard")
         print(f"  [{key}] missing={len(missing):,} matched={len(updates):,} "
-              f"(exact {exact:,}, tokens {len(updates) - exact:,}) written={n:,}")
+              f"(exact {exact:,}, tokens {len(updates) - exact - n_j:,}, jaccard {n_j:,}) written={n:,}")
         total += n
     return total
 
@@ -130,7 +159,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Fill missing barcodes by name match across markets")
     parser.add_argument("--targets", nargs="+", default=None, choices=list(config.STORES))
     parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--show", type=int, default=0, help="Print the first N token matches (audit)")
+    parser.add_argument("--show", type=int, default=0, help="Print the first N token/jaccard matches (audit)")
+    parser.add_argument("--fuzzy", type=float, default=0.0,
+                        help="Third pass: best Jaccard similarity of token sets with the same size token, "
+                             "accepted when >= this value (0.8 measured safe; 0.7 is NOT). Off by default.")
     parser.add_argument("--env", default=".env")
     args = parser.parse_args()
     load_env(args.env)
@@ -138,7 +170,7 @@ def main() -> None:
     ref, tref = build_reference(list(config.STORES))
     targets = args.targets or list(config.STORES)
     print(f"\nFilling {'(dry run) ' if args.dry_run else ''}targets: {', '.join(targets)}")
-    total = fill(targets, ref, tref, args.dry_run, show=args.show)
+    total = fill(targets, ref, tref, args.dry_run, show=args.show, fuzzy=args.fuzzy)
     print(f"\nDone: {total:,} barcodes written")
 
 

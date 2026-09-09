@@ -25,6 +25,8 @@ CLI:
     python -m db.db_manager prune <store|all> --days 180
     python -m db.db_manager mark-stale <store|all> --hours 48
     python -m db.db_manager drop-legacy <store|all>
+    python -m db.db_manager stores <store>                     # store_ids present (rows, barcodes, last update)
+    python -m db.db_manager drop-store <store> <store_id>      # remove a wrongly selected store
 """
 
 from __future__ import annotations
@@ -599,6 +601,33 @@ class StoreDB:
         print(f"  [{self.store_key}] pruned {n:,} price_history rows older than {days} days")
         return n
 
+    def drop_store(self, store_id: str) -> Tuple[int, int]:
+        """Delete every row of one store_id (offers, price_history, enrich state, store_info).
+        Used to remove a wrongly selected store after a store-resolution fix."""
+        def _impl():
+            with self._conn.cursor() as cur:
+                cur.execute("DELETE FROM price_history WHERE store_id = %s", (store_id,))
+                ph = cur.rowcount
+                cur.execute("DELETE FROM barcode_enrich_state WHERE store_id = %s", (store_id,))
+                cur.execute("DELETE FROM offers WHERE store_id = %s", (store_id,))
+                off = cur.rowcount
+                cur.execute("DELETE FROM store_info WHERE store_id = %s", (store_id,))
+            self._conn.commit()
+            return off, ph
+        off, ph = self._run(_impl)
+        print(f"  [{self.store_key}] dropped store {store_id}: {off:,} offers, {ph:,} price_history rows")
+        return off, ph
+
+    def list_stores(self) -> List[Tuple[str, Optional[str], int, int, Any]]:
+        def _impl():
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    "SELECT o.store_id, si.store_name, COUNT(*), COUNT(o.barcode), MAX(o.updated_at) "
+                    "FROM offers o LEFT JOIN store_info si ON si.store_id = o.store_id GROUP BY 1, 2 ORDER BY 3 DESC"
+                )
+                return cur.fetchall()
+        return self._run(_impl)
+
     def drop_legacy(self) -> List[str]:
         def _impl():
             dropped = []
@@ -854,6 +883,11 @@ if __name__ == "__main__":
     p.add_argument("store")
     p = sub.add_parser("seed-legacy", help="Re-run legacy barcode seeding")
     p.add_argument("store")
+    p = sub.add_parser("stores", help="List store_ids present in a market DB (rows, barcodes, last update)")
+    p.add_argument("store")
+    p = sub.add_parser("drop-store", help="Delete all rows of one store_id in a market DB")
+    p.add_argument("store")
+    p.add_argument("store_id")
     args = parser.parse_args()
 
     load_env(args.env)
@@ -872,6 +906,15 @@ if __name__ == "__main__":
         export_all_together(args.dir, only_with_barcode=not args.all_rows)
     elif args.cmd == "sync-hub":
         sync_hub(args.stores)
+    elif args.cmd == "stores":
+        db = StoreDB(args.store)
+        for sid, name, n, nb, last in db.list_stores():
+            print(f"  {sid:<32} {str(name)[:30]:<30} rows={n:>7,} barcode={nb:>7,} last={last:%Y-%m-%d %H:%M}")
+        db.close()
+    elif args.cmd == "drop-store":
+        db = StoreDB(args.store)
+        db.drop_store(args.store_id)
+        db.close()
     elif args.cmd in ("prune", "mark-stale", "drop-legacy", "seed-legacy"):
         for k in _targets(args.store):
             try:

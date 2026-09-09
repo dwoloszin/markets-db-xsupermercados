@@ -33,6 +33,12 @@ on:
         default: "false"
         type: choice
         options: ["false", "true"]
+      probe:
+        description: "Run the market's endpoint diagnostics instead of scraping"
+        required: false
+        default: "false"
+        type: choice
+        options: ["false", "true"]
 
 jobs:
   scrape:
@@ -72,6 +78,7 @@ jobs:
           if [ "${{ inputs.skip_enrich }}" = "true" ]; then ARGS="$ARGS --skip-enrich"; fi
           if [ -n "${{ inputs.limit }}" ]; then ARGS="$ARGS --limit ${{ inputs.limit }}"; fi
           if [ -n "${{ inputs.zip_code }}" ]; then ARGS="$ARGS --zip ${{ inputs.zip_code }}"; fi
+          if [ "${{ inputs.probe }}" = "true" ]; then ARGS="$ARGS --probe"; fi
           python -m main $ARGS
 
       - name: Upload logs

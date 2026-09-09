@@ -48,10 +48,16 @@ Things we paid for in hours of debugging. Read before writing or fixing a scrape
   `/action/...` calls that set cookies.
 * **Instabuy (Higas)**: `api.instabuy.com.br/apiv3/{offers,search,category}` are
   gone (404). The storefront is `<sub>.instabuy.app.br` and uses
-  `api.ibecom.com.br/api_ecommerce/v5` with header `x-store-id`; `items?limit=30`
-  paginates (30 max). No barcode field any more. The API bans the IP
-  (`403 "Acesso bloqueado"`, hours) after ~8 fast requests: pace at 2.5 s, never
-  retry a 403 in a loop, prefer `curl_cffi` (Chrome TLS fingerprint).
+  `api.ibecom.com.br/api_ecommerce/v5` with header `x-store-id`. Unfiltered
+  `items` refuses page > 7 (400) and a few 400/429 in a row ban the IP for hours
+  (`403 "Acesso bloqueado"`); the working route is per department:
+  `items?category_id=<menu department id>&limit=30&page=N`. Unknown query params
+  are silently ignored (same totals) - always compare totals between two filter
+  values before trusting a parameter. No barcode field any more.
+* **When a site blocks your IP**, do not keep testing from it: the `--probe`
+  mode runs a market's endpoint checks on a GitHub runner (fresh IP) in 3 minutes
+  (`gh workflow run scrape.yml --repo <org>/markets-db-<market> -f probe=true`,
+  results in the run's `logs` artifact).
 * **Carrefour** serves at most 50 pages per listing: always scrape the deepest
   sitemap categories, never the top-level ones.
 * **GPA/Linx** relevance sort repeats products across pages: an all-duplicates
@@ -80,6 +86,16 @@ Things we paid for in hours of debugging. Read before writing or fixing a scrape
   broken site is visible in the Actions UI.
 * GitHub datacenter IPs are blocked by some WAFs (Convertiez in the pharmacy
   project). `main.py --only-stale` exists to refresh those from a home IP.
+
+* **Geocoding a CEP**: BrasilAPI (`/api/cep/v2`) returns the CITY centroid for
+  many CEPs (08032-230 -> Praça da Sé, 20 km from Vila Curuçá). Every
+  "nearest store" picked from it was wrong (Higas, Nagumo, and the store the
+  applay backend chose for X/Barbosa). `cep.awesomeapi.com.br/json/<cep>` gives
+  the street point; Nominatim free-text is unreliable for SP streets (and can
+  answer another city). Sanity-check a geocoder against a CEP you know.
+* When a market DB shows twice the catalogue, run
+  `python -m db.db_manager stores <market>`: an unstable store choice creates a
+  second store_id and doubles every count (including "no barcode").
 
 ## Data lessons
 

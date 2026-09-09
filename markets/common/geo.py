@@ -4,7 +4,7 @@ geo.py - ZIP (CEP) helpers shared by store-resolution code.
   * normalize_zip("08032-230") -> "08032230"
   * format_zip("08032230")     -> "08032-230"
   * zip_info(zip)              -> {"city","state","street","neighborhood"} via ViaCEP
-  * zip_coords(zip)            -> (lat, lon) via BrasilAPI (fast) then ViaCEP+Nominatim
+  * zip_coords(zip)            -> (lat, lon) via awesomeapi (street level), Nominatim, then BrasilAPI
   * haversine_km(lat1, lon1, lat2, lon2)
 """
 
@@ -50,11 +50,46 @@ def zip_info(zip_code: str, session: Optional[requests.Session] = None) -> Dict[
 
 
 def zip_coords(zip_code: str, session: Optional[requests.Session] = None) -> Optional[Tuple[float, float]]:
+    """
+    Street-level coordinates for a CEP.
+
+    Order matters (learned 2026-09-09): BrasilAPI answers a CITY CENTROID for many
+    CEPs (08032-230 -> Praça da Sé, 20 km off), which made every "nearest store"
+    choice wrong. cep.awesomeapi.com.br returns the street point, so it comes
+    first; BrasilAPI is only a fallback and Nominatim (structured street query)
+    the last resort.
+    """
     d = normalize_zip(zip_code)
     if len(d) != 8:
         return None
     s = session or make_session()
-    # 1. BrasilAPI has coordinates for most ZIPs
+    # 1. awesomeapi - street-level lat/lng
+    try:
+        r = s.get(f"https://cep.awesomeapi.com.br/json/{d}", timeout=10)
+        if r.status_code == 200:
+            data = r.json() or {}
+            lat, lon = to_float(data.get("lat")), to_float(data.get("lng"))
+            if lat is not None and lon is not None:
+                return lat, lon
+    except Exception:
+        pass
+    # 2. Nominatim structured query on the ViaCEP street
+    info = zip_info(d, s)
+    if info.get("street") and info.get("city"):
+        try:
+            r = s.get(
+                "https://nominatim.openstreetmap.org/search",
+                params={"street": info["street"], "city": info["city"], "state": info.get("state", ""),
+                        "country": "Brasil", "format": "json", "limit": 1},
+                headers={"User-Agent": "markets-db-geocoder/2.0"}, timeout=10,
+            )
+            if r.status_code == 200:
+                rows = r.json() or []
+                if rows:
+                    return float(rows[0]["lat"]), float(rows[0]["lon"])
+        except Exception:
+            pass
+    # 3. BrasilAPI - may be a city centroid, better than nothing
     try:
         r = s.get(f"https://brasilapi.com.br/api/cep/v2/{d}", timeout=10)
         if r.status_code == 200:
@@ -64,28 +99,6 @@ def zip_coords(zip_code: str, session: Optional[requests.Session] = None) -> Opt
                 return float(lat), float(lon)
     except Exception:
         pass
-    # 2. ViaCEP address -> Nominatim
-    info = zip_info(d, s)
-    queries = []
-    if info:
-        queries.append(", ".join(p for p in [info.get("street"), info.get("neighborhood"),
-                                             info.get("city"), info.get("state"), "Brasil"] if p))
-        queries.append(", ".join(p for p in [info.get("city"), info.get("state"), "Brasil"] if p))
-    queries.append(f"{d[:5]}-{d[5:]}, Brasil")
-    for q in queries:
-        try:
-            r = s.get(
-                "https://nominatim.openstreetmap.org/search",
-                params={"q": q, "format": "json", "limit": 1, "countrycodes": "br"},
-                headers={"User-Agent": "markets-db-geocoder/2.0"},
-                timeout=10,
-            )
-            if r.status_code == 200:
-                rows = r.json() or []
-                if rows:
-                    return float(rows[0]["lat"]), float(rows[0]["lon"])
-        except Exception:
-            continue
     return None
 
 

@@ -73,6 +73,11 @@ Deterministic replacement for the old AI matcher, two passes:
    (de/com/pacote/lata...), and a size token REQUIRED so a size-less name can
    never match a specific pack (`crossfill-tokens`). Audit with
    `python -m tools.crossfill_barcodes --dry-run --show 30`.
+3. **jaccard (opt-in, `--fuzzy 0.8`)**: best Jaccard similarity between token
+   sets that share the same size token. Measured on Nagumo (2026-09-06): 0.8 adds
+   ~1,200 barcodes with all audited samples correct; 0.7 starts matching
+   different products (Ypê vs Pink Garden) - never go below 0.8.
+   Rows get `crossfill-jaccard`; revert with the UPDATE above if needed.
 
 No fuzzy matching, no model, seconds to run, auditable (`barcode_source =
 'crossfill'`, revert with one UPDATE). It mainly helps Nagumo and Higas, whose

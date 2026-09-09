@@ -9,19 +9,19 @@ the same architecture: no manager database, no AI matching, no Supabase.
 
 | Market | Platform | Barcode source | Offers | Barcode | Run time |
 |--------|----------|----------------|-------:|--------:|---------:|
-| Atacadão | VTEX FastStore (GraphQL) | VTEX catalog batch lookup | 10,616 | 99.0% | 9 min |
+| Atacadão | VTEX FastStore (GraphQL) | VTEX catalog batch lookup | 10,831 | 99.1% | 9 min |
 | Barbosa | applay | inline (`material`/`sku`) | 7,178 | 94.7% | 5 min |
-| Carrefour Mercado | VTEX FastStore (HTML) | PDP JSON-LD (+ image file name) | 9,948 | 94.8% | 12 min (+16 first enrichment) |
+| Carrefour Mercado | VTEX FastStore (HTML) | PDP JSON-LD (+ image file name) | 10,247 | 94.6% | 12 min (+16 first enrichment) |
 | Davo | VipCommerce | inline `codigo_barras` | 6,151 | 96.8% | 4 min |
-| Extra | GPA / Linx API | PDP HTML `"ean"` | 13,813 | 100% | 8 min (+2 enrichment) |
+| Extra | GPA / Linx API | PDP HTML `"ean"` | 14,361 | 100% | 8 min (+2 enrichment) |
 | Giga | VTEX | inline `ean` | 7,363 | 96.2% | 9 min |
-| Higas | Instabuy / ibecom v5 | legacy table + cross-market fill | 210* | 35% | ~18 min (paced) |
-| Nagumo | Salesforce Commerce Cloud | legacy table + cross-market fill (site exposes none) | 14,405 | 23.3% | 15 min |
+| Higas | Instabuy / ibecom v5 | legacy table + cross-market fill (API exposes none) | 15,276 | 54.9% | 25 min (paced, per department) |
+| Nagumo | Salesforce Commerce Cloud | legacy table + cross-market fill (site exposes none) | 14,425 | 30.0% | 16 min |
 | Oba Hortifruti | VTEX | inline `ean` | 5,216 | 71.6% (produce) | 6 min |
-| Pão de Açúcar | GPA / Linx API | PDP HTML `"ean"` | 12,053 | 99.2% | 9 min (+5 enrichment) |
+| Pão de Açúcar | GPA / Linx API | PDP HTML `"ean"` | 13,888 | 99.3% | 9 min (+5 enrichment) |
 | Rossi | VipCommerce | inline `codigo_barras` | 13,283 | 94.1% | 9 min |
 | Sam's Club | VTEX | inline `ean` | 4,170 | 99.8% | 7 min |
-| Sonda Delivery | ASP.NET HTML | image path + PDP JSON-LD | 9,440 | 97.5% | 19 min (+6 enrichment) |
+| Sonda Delivery | ASP.NET HTML | image path + PDP JSON-LD | 11,363 | 97.9% | 19 min (+6 enrichment) |
 | Swift | VTEX | inline `ean` | 990 | 100% | 1 min |
 | Tenda Atacado | Stoom API | inline `barcode` | 9,322 | 99.6% | 7 min |
 | X Supermercados | applay | inline (`material`/`sku`) | 5,040 | 90.7% | 3 min |
@@ -29,7 +29,6 @@ the same architecture: no manager database, no AI matching, no Supabase.
 Whole set in parallel: **~25 min wall-clock** (the previous pipeline took 7h43m).
 
 \* measured on the first runs after the refactor (2026-09-06, CEP 08032-230); see `python -m db.db_manager stats`.
-  Higas: the run was cut short by its API ban ("Acesso bloqueado") - the paced version needs a run from an unblocked IP.
 
 ## Quick start
 

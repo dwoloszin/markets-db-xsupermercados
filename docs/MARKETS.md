@@ -100,18 +100,29 @@ Conventions: `CEP` = 8-digit ZIP; "inline" = barcode present in the listing;
 * Store: `GET https://api.instabuy.com.br/apiv3/store?partner_id=replicarhigas&zip_code=<CEP>`
   -> branches (`id`, `subdomain`, `address`, `spatial_position`); nearest by API distance /
   coordinates / CEP gap.
-* Listing: `GET https://api.ibecom.com.br/api_ecommerce/v5/items?limit=30&page=N` with headers
-  `x-store-id: <store id>`, `Origin/Referer: https://<subdomain>.instabuy.app.br`, optional
-  `ibsessionid` from `GET https://api.instabuy.com.br/auth/client/session?subdomain=&host=`.
-  `pagination.total_pages`; `limit` max 30 (~425 pages for 12.7k items).
+* API base `https://api.ibecom.com.br/api_ecommerce/v5`, header `x-store-id: <store id>`,
+  browser UA + `Origin/Referer: https://<subdomain>.instabuy.app.br`. Do NOT send the site's
+  `ibsessionid` (not needed).
+* Listing: `GET /menu` -> `data.items[]` with `link.type == "department"` (18 departments,
+  `link.department_id`); then per department
+  `GET /items?category_id=<department id>&limit=30&page=N` -> `data[]`,
+  `pagination.total_pages/total_count` (~300-900 items per department, ~15k total).
   Item: `id`, `name`, `brand`, `slug`, `image` (-> `https://assets.ibecom.com.br/ib.item.image.medium/m-<image>`),
   `price_config.price`, `price_config.price_discount{promo_price,end_date}`, `stock`.
+* **Traps (found with `--probe` on GitHub runners, 2026-09-06)**:
+  * `items` without a filter refuses `page > 7`: HTTP 400
+    `"Paginação profunda sem filtro não é permitida; filtre por categoria/departamento"`.
+  * `department_id`, `department`, `category`, `*_slug` parameters are silently IGNORED
+    (same 15k total); only `category_id` (= the menu *department* id) and `subcategory_id`
+    (= the menu *category* id) filter.
+  * `limit` max 30; `search?search=<text>&N<=50` needs a non-empty text;
+    `recommendations/departments/{id}?N=30&page=N` also paginates (no totals).
+  * a handful of 400/429 answers in a row -> `403 "Acesso bloqueado"` for the whole IP for
+    hours. The scraper waits `HIGAS_DELAY` (2.5 s) between calls, cools down `HIGAS_BACKOFF`
+    (300 s) on 4xx/5xx and aborts on the ban message.
 * Barcode: none in v5 (`/products/{id}` neither; `apiv3/offers|search` are 404). Coverage
   comes from `offers_legacy` (name/url match) and `tools/crossfill_barcodes.py`.
-* **Rate limit**: ~8 quick requests -> 400/429, then `403 {"error_message":"Acesso bloqueado"}`
-  for the whole IP for hours. The scraper waits `HIGAS_DELAY` (2.5 s) between pages, uses
-  `curl_cffi` Chrome impersonation when installed, and aborts immediately on "bloqueado".
-* Runtime: ~18 min (425 pages at 2.5 s).
+* Runtime: ~25 min (about 520 calls at 2.5 s).
 
 ## Nagumo - `markets/nagumo` (Salesforce Commerce Cloud)
 
