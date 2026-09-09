@@ -97,6 +97,12 @@ Things we paid for in hours of debugging. Read before writing or fixing a scrape
   `python -m db.db_manager stores <market>`: an unstable store choice creates a
   second store_id and doubles every count (including "no barcode").
 
+* **"Prices per store" must be measured, never assumed.** Of the six markets that
+  expose a store choice, only Atacadão, Carrefour and Higas actually change prices
+  with the store; Tenda, X and Barbosa return the same prices whatever branch is
+  selected. Check the same product ids under two stores before making a market
+  `per_store` (it multiplies the runtime and the rows).
+
 ## Data lessons
 
 * The old `market_storehash_barcode` offer id caused duplicates whenever a

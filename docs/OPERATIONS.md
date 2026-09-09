@@ -48,13 +48,16 @@ keeps what was selected for every `store_id`.
 
 ## Several stores per market (several CEPs)
 
-Prices depend on the store for **Atacadão, Carrefour, Tenda and Higas**
-(`config.STORES[..]["per_store"] = True`). Give a comma-separated CEP list and each of
-those markets is scraped once per CEP, each store under its own `store_id`; the other
-twelve markets have national prices (checked one by one: X and Barbosa serve a single
-e-commerce store, Nagumo prices are identical in every branch, Sam's Club regionId only
-affects availability) and run once whatever the list (their `store_id` is a constant
-such as `nagumo`, `swift`, `rossi:1:1`).
+Prices depend on the store for **Atacadão, Carrefour and Higas** only
+(`config.STORES[..]["per_store"] = True`; measured 2026-09-09: 4-32% of prices differ
+between Atacadão sellers, 13-42% between Carrefour stores). Give a comma-separated CEP
+list and each of those markets is scraped once per CEP, each store under its own
+`store_id`. The other thirteen markets have national prices - measured, not assumed:
+X and Barbosa serve a single e-commerce store, Nagumo prices are identical in every
+branch, Tenda has one price per product (only stock is per branch), Sam's Club and
+Swift show 0 differences across CEPs, Extra/Pão de Açúcar answer only for one store id,
+Rossi/Davo serve the delivery hub, Oba/Giga/Sonda take no CEP. They run once whatever
+the list, under a constant `store_id` (`nagumo`, `swift`, `tenda`, `rossi:1:1`, ...).
 
 ```bash
 python -m main --zip "08032-230,04646-000,02401-100,06290-170"   # leste, sul, norte, oeste
@@ -69,12 +72,16 @@ What happens with N stores:
   enrichment fetches each product only once;
 * `mark-stale` works per store: a row is flipped only when its own store's latest run
   did not refresh it, so stores scraped on different days do not disturb each other;
-* runtime grows linearly for the per-store markets (Atacadão ~9 min per store,
-  Carrefour ~12, Tenda ~7, Higas ~25). With 4 CEPs the daily cycle
+* runtime grows linearly for the per-store markets (Atacadão ~6-9 min per store,
+  Carrefour ~12, Higas ~25). With 4 CEPs the daily cycle
   is still well inside the 4-hour schedule slot for every market except Higas, whose
   API pacing makes it ~100 min - give it its own slot or fewer CEPs.
 * `python -m db.db_manager stores <market>` lists the stores present;
   `drop-store <market> <store_id>` removes one.
+* **Which stores exist?** `python -m tools.list_stores` writes `exports/stores_<market>.csv`
+  with every store the market exposes and a CEP that selects it (2026-09: Atacadão 83
+  sellers, Carrefour 132 pickup stores, Higas 6; Tenda's 41 branches only differ in stock). One CEP = one store
+  per market, so pick the CEPs of the stores you want and put them in `SCRAPE_ZIP_CODES`.
 
 ## Maintenance
 

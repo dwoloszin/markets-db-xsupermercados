@@ -195,8 +195,10 @@ Conventions: `CEP` = 8-digit ZIP; "inline" = barcode present in the listing;
 
 ## Tenda Atacado - `markets/tenda` (Stoom API)
 
-* Store: `GET https://api.tendaatacado.com.br/api/public/branch/zip/<CEP>` -> branches sorted by
-  distance; cookie `_Tendaatacado-branchID=<id>` for branch prices/stock.
+* Store: `GET https://api.tendaatacado.com.br/api/public/branch/zip/<CEP>` -> all 41 branches sorted
+  by distance; cookie `_Tendaatacado-branchID=<id>`. Prices are NATIONAL (0 differences across
+  4 branches, 2026-09-09); each product carries `inventory[]` with the stock of every branch,
+  so the nearest branch only feeds the stock column. `store_id` = constant `tenda`.
 * Listing: `GET /api/public/store/search?query=<q>&page=N` (20/page, <= 25 pages). Queries =
   department links + `/public/store/all-categories` sub-links + keywords + a-z, 4 threads,
   dedup by `id`. Headers `Origin/Referer: https://www.tendaatacado.com.br`, `Web-Platform: web-desktop`.

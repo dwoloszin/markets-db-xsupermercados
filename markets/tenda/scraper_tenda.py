@@ -2,8 +2,10 @@
 scraper_tenda.py - Tenda Atacado (https://www.tendaatacado.com.br)
 
 Platform : Stoom / Java Spring API  https://api.tendaatacado.com.br/api
-Store    : GET /public/branch/zip/{cep} -> branches sorted by distance; the chosen
-           branch id goes into cookie `_Tendaatacado-branchID` (prices/stock per branch).
+Store    : GET /public/branch/zip/{cep} -> branches sorted by distance; the nearest branch id
+           goes into cookie `_Tendaatacado-branchID`. PRICES ARE NATIONAL (0 differences across
+           4 branches, 2026-09-09) - only stock is per branch (inventory[] lists every branch),
+           so store_id is the constant "tenda" and the branch only feeds the stock column.
 Listing  : there is NO category listing endpoint; /public/store/search?query=..&page=N
            returns 20/page, max 25 pages per query. Coverage comes from running many
            queries (department links + sub-category links + keywords + a-z) and
@@ -24,6 +26,7 @@ from markets.common.http import ThreadSessions, get_json, make_session
 from markets.common.offer import make_offer, parse_brl
 
 STORE_KEY = "tenda"
+STORE_ID = "tenda"  # national prices (measured 2026-09-09)
 API_BASE = "https://api.tendaatacado.com.br/api"
 WEB_BASE = "https://www.tendaatacado.com.br"
 HEADERS = {"Origin": WEB_BASE, "Referer": WEB_BASE + "/", "Web-Platform": "web-desktop"}
@@ -45,13 +48,18 @@ def _resolve_store(session, db, zip_code: str) -> str:
         raise RuntimeError(f"Tenda: no branch found for CEP {cep}")
     nearest = data[0]
     addr = nearest.get("address") or {}
-    store_id = str(nearest.get("id"))
-    db.save_store_info(store_id, query_zip=format_zip(cep), name=nearest.get("name"),
+    # Prices are national (0 differences across 4 branches, 2026-09-09); only the stock is
+    # per branch (inventory[] of every branch comes in each product) -> one store_id, the
+    # nearest branch id is used for the stock column and recorded in store_info.
+    store_id = STORE_ID
+    db.save_store_info(store_id, query_zip=format_zip(cep),
+                       name=f"Tenda (online) - nearest branch {nearest.get('id')} {nearest.get('name')}",
                        address=addr.get("addressLine1"), city=addr.get("city"), state=addr.get("state"),
                        store_zip=addr.get("zipCode") or addr.get("zip"),
                        latitude=addr.get("latitude"), longitude=addr.get("longitude"), payload=nearest)
-    print(f"[tenda] branch {store_id} {nearest.get('name')} ({addr.get('city')}) dist={nearest.get('distance')}m")
-    return store_id
+    print(f"[tenda] nearest branch {nearest.get('id')} {nearest.get('name')} ({addr.get('city')}) "
+          f"dist={nearest.get('distance')}m - store_id {STORE_ID}")
+    return str(nearest.get("id"))
 
 
 def _queries(session) -> List[str]:
@@ -101,7 +109,7 @@ def _prices(p: Dict[str, Any]) -> Tuple[Any, Any, Any, Optional[str]]:
     return regular, None, None, None
 
 
-def _offer(p: Dict[str, Any], store_id: str) -> Optional[Dict[str, Any]]:
+def _offer(p: Dict[str, Any], store_id: str, branch_id: str = "") -> Optional[Dict[str, Any]]:
     regular, promo, min_q, tag = _prices(p)
     photos = p.get("photos") or []
     image = p.get("thumbnail")
@@ -114,7 +122,7 @@ def _offer(p: Dict[str, Any], store_id: str) -> Optional[Dict[str, Any]]:
     url = raw_url if raw_url.startswith("http") else (f"{WEB_BASE}/{raw_url.strip('/')}" if raw_url else None)
     stock = None
     for inv in p.get("inventory") or []:
-        if isinstance(inv, dict) and str(inv.get("branchId", "")) == str(store_id):
+        if isinstance(inv, dict) and str(inv.get("branchId", "")) == str(branch_id):
             stock = inv.get("totalAvailable") or inv.get("quantity")
             break
     if stock is None:
@@ -153,10 +161,11 @@ def _run_query(pool: ThreadSessions, query: str, max_pages: int = 25) -> List[Di
 
 def scrape(db, zip_code: str, limit: Optional[int] = None) -> Dict[str, int]:
     session = make_session(HEADERS)
-    store_id = _resolve_store(session, db, zip_code)
+    branch_id = _resolve_store(session, db, zip_code)
+    store_id = STORE_ID
     queries = _queries(session)
     print(f"[tenda] {len(queries)} search queries, 4 threads")
-    pool = ThreadSessions(headers=HEADERS, cookies={"_Tendaatacado-branchID": store_id})
+    pool = ThreadSessions(headers=HEADERS, cookies={"_Tendaatacado-branchID": branch_id})
     seen: set = set()
     total = {"upserted": 0, "skipped": 0, "with_barcode": 0}
     done = 0
@@ -172,7 +181,7 @@ def scrape(db, zip_code: str, limit: Optional[int] = None) -> Dict[str, int]:
                 continue
             batch = []
             for p in products:
-                offer = _offer(p, store_id)
+                offer = _offer(p, store_id, branch_id)
                 if offer and offer["product_id"] not in seen:
                     seen.add(offer["product_id"])
                     batch.append(offer)
