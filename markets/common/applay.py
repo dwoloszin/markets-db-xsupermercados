@@ -9,8 +9,9 @@ How the platform works (reverse engineered, see docs/MARKETS.md):
                 Next-Action: <action id>. Action ids rotate on each deploy; we try the
                 known ids, then scan the page HTML for $ACTION_ID_<40 hex>, then (last
                 resort) use Playwright to discover it.
-  2. Session: POST {api}/eauth/session with an encrypted body -> session object with the
-     store ("loja") chosen from the device position (lat/lng of the CEP).
+  2. Session: POST {api}/eauth/session with an encrypted body -> session object with
+     the ONE e-commerce store of the chain (same whatever the CEP position; pinning
+     another store from enav/listar_lojas changes nothing). Prices are national.
      Bodies are AES-CBC encrypted the CryptoJS way (EVP_BytesToKey, passphrase
      "BEWAREOBLIVIONISATHAND", "Salted__" prefix); responses come back the same way.
   3. Products: POST {api}/enav/produtos {session, query:{departamento?}, config:{skus:[...]}}
@@ -243,10 +244,71 @@ class ApplayMarket:
                         session_obj.update(refreshed)
         except Exception:
             pass
+        # Single e-commerce store (checked 2026-09-09 with 4 CEPs): the backend always
+        # answers the same store, and pinning another one from enav/listar_lojas on the
+        # session changes nothing (same totals, prices and stock; the web app has no
+        # store-switch call either). Prices are therefore national for our purposes.
+        # APPLAY_PIN_NEAREST=1 keeps the pickup pin available for future experiments.
+        if os.getenv("APPLAY_PIN_NEAREST") == "1":
+            try:
+                nearest = self.nearest_store(self.list_stores(session_obj), coords)
+                if nearest:
+                    session_obj = dict(session_obj)
+                    session_obj["loja"] = nearest
+                    session_obj["modality"] = "retirada"
+            except Exception as exc:
+                print(f"{self.log}store list unavailable ({exc.__class__.__name__}) - keeping the backend's store")
         loja = session_obj.get("loja") or {}
         store_id = str(loja.get("id") or loja.get("numero") or loja.get("_id") or "") or None
         self.session_obj, self.store_id = session_obj, store_id
         return session_obj, store_id
+
+    def list_stores(self, session_obj: Dict[str, Any]) -> List[Dict[str, Any]]:
+        sid = (session_obj or {}).get("session")
+        if not sid:
+            return []
+        r = self.session.post(f"{self.api}/enav/listar_lojas", headers=self._api_headers(),
+                              data=json.dumps(protect({"session": sid}), ensure_ascii=False), timeout=40)
+        if r.status_code != 200:
+            return []
+        body = r.json() or {}
+        decoded = unprotect(body.get("data") or {})
+        if isinstance(decoded, list):
+            return [x for x in decoded if isinstance(x, dict)]
+        if isinstance(decoded, dict):
+            return [x for x in (decoded.get("lojas") or []) if isinstance(x, dict)]
+        return []
+
+    @staticmethod
+    def _store_latlng(store: Dict[str, Any]) -> Tuple[Optional[float], Optional[float]]:
+        end = store.get("end") if isinstance(store.get("end"), dict) else {}
+        lat = store.get("latitude") or store.get("lat") or end.get("latitude") or end.get("lat")
+        lng = store.get("longitude") or store.get("lng") or end.get("longitude") or end.get("lng")
+        try:
+            return (float(lat), float(lng)) if lat is not None and lng is not None else (None, None)
+        except (TypeError, ValueError):
+            return None, None
+
+    def nearest_store(self, stores: List[Dict[str, Any]], coords: Tuple[float, float]) -> Optional[Dict[str, Any]]:
+        from markets.common.geo import haversine_km
+        best, best_d = None, 1e9
+        for st in stores:
+            # `distancia` (km) is computed by the backend from the device position we sent
+            d = None
+            try:
+                d = float(st.get("distancia")) if st.get("distancia") not in (None, "") else None
+            except (TypeError, ValueError):
+                d = None
+            if d is None:
+                lat, lng = self._store_latlng(st)
+                if lat is None:
+                    continue
+                d = haversine_km(coords[0], coords[1], lat, lng)
+            if d < best_d:
+                best, best_d = st, d
+        if best is not None:
+            print(f"{self.log}nearest store {best.get('nome') or best.get('name')} ({best_d:.1f} km) of {len(stores)}")
+        return best
 
     def save_store(self, db, zip_code: str) -> str:
         loja = self.session_obj.get("loja") or {}

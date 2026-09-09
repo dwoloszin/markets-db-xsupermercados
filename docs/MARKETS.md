@@ -35,7 +35,10 @@ Conventions: `CEP` = 8-digit ZIP; "inline" = barcode present in the listing;
 * API `https://api-barbosa.applay.tech/api2/ecommerce`, web `https://www.barbosasupermercados.com.br`.
 * Token: `POST {web}/api/auth {"url":"https://api-barbosa.applay.tech/"}` -> `{token}`.
 * Session: `POST eauth/session` (encrypted) with device position from the CEP coordinates
-  -> `loja` (id, nome, end{cidade,uf}) = the store the backend picked.
+  -> `loja` = always the chain's single e-commerce store (Taboão for Barbosa, Pimentas for X),
+  whatever the CEP. `enav/listar_lojas` lists the physical stores with `distancia`, but pinning
+  one on the session changes nothing (same totals/prices/stock) and the web app has no
+  store-switch endpoint -> national prices, `per_store: False`.
 * Listing: `POST enav/produtos {session, query:{departamento:<name>}, config:{skus:[seen...]}}`
   (encrypted) -> `produtos[]`, `totalProdutos`. A query is mandatory now. Department names:
   seed list + learned from `produtos[].departamento`.
