@@ -190,7 +190,7 @@ def main() -> None:
     parser.add_argument("--stores", nargs="+", default=None, choices=STORES, metavar="STORE",
                         help=f"Markets to run (default: all). Choices: {', '.join(STORES)}")
     parser.add_argument("--limit", type=int, default=config.SCRAPE_LIMIT, help="Max products per market (test)")
-    parser.add_argument("--zip", type=str, default=None, help="CEP (default: config.SCRAPE_ZIP_CODE)")
+    parser.add_argument("--zip", type=str, default=None, help="CEP or comma-separated CEPs (default: config.SCRAPE_ZIP_CODES)")
     parser.add_argument("--workers", type=int, default=12, help="Threads for barcode enrichment")
     parser.add_argument("--csv", action="store_true", help="Also export a CSV per market")
     parser.add_argument("--env", type=str, default=".env")
@@ -225,7 +225,7 @@ def main() -> None:
     ts = datetime.now().strftime("%Y%m%d_%H%M")
     print(f"\nRunning {len(stores)} market(s): {', '.join(stores)}"
           f"{'  [limit ' + str(args.limit) + ']' if args.limit else ''}"
-          f"{'  [zip ' + args.zip + ']' if args.zip else '  [zip ' + config.SCRAPE_ZIP_CODE + ']'}\n")
+          f"{'  [zip ' + args.zip + ']' if args.zip else '  [zip ' + ','.join(config.SCRAPE_ZIP_CODES) + ']'}\n")
 
     results: Dict[str, bool] = {}
     durations: Dict[str, float] = {}

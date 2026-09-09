@@ -6,7 +6,8 @@
 # Secrets required in each market repo (set automatically by deploy.py):
 #   STORE_KEY               - e.g. "atacadao"
 #   DATABASE_URL_{MARKET}   - e.g. DATABASE_URL_ATACADAO (Neon)
-#   SCRAPE_ZIP_CODE         - optional, overrides config.SCRAPE_ZIP_CODE
+#   SCRAPE_ZIP_CODE         - optional; one CEP or a comma-separated list (one store per CEP
+#                             for per-store markets, see config.STORES[..]["per_store"])
 
 name: Scrape
 
@@ -24,7 +25,7 @@ on:
         required: false
         default: ""
       zip_code:
-        description: "CEP override"
+        description: "CEP override (comma-separated list = one store per CEP)"
         required: false
         default: ""
       skip_enrich:

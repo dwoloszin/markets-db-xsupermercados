@@ -480,6 +480,52 @@ class StoreDB:
 
         self._run(_impl)
 
+    def update_barcodes_by_product(self, rows: Iterable[Tuple[str, str, str]]) -> int:
+        """rows: (product_id, barcode, source). Fills NULL barcodes of that product in EVERY store."""
+        clean = []
+        for product_id, barcode, source in rows:
+            b = normalize_gtin(barcode, allow_gtin8=True)
+            if b:
+                clean.append((b, source, product_id))
+        if not clean:
+            return 0
+
+        def _impl():
+            total = 0
+            with self._conn.cursor() as cur:
+                for i in range(0, len(clean), 500):
+                    cur.executemany(
+                        "UPDATE offers SET barcode = %s, barcode_source = %s, updated_at = NOW() "
+                        "WHERE product_id = %s AND barcode IS NULL",
+                        clean[i:i + 500],
+                    )
+                    total += cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
+            self._conn.commit()
+            return total
+
+        return self._run(_impl)
+
+    def fill_barcodes_from_siblings(self) -> int:
+        """
+        Multi-store: the same product_id scraped for another store of this market
+        already has a barcode -> copy it (barcodes are per product, not per store).
+        Instant, run after every scrape.
+        """
+        def _impl():
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE offers o SET barcode = s.barcode, barcode_source = s.barcode_source, updated_at = NOW()
+                    FROM (SELECT DISTINCT ON (product_id) product_id, barcode, barcode_source
+                          FROM offers WHERE barcode IS NOT NULL ORDER BY product_id, updated_at DESC) s
+                    WHERE o.product_id = s.product_id AND o.barcode IS NULL
+                    """
+                )
+                n = cur.rowcount
+            self._conn.commit()
+            return n
+        return self._run(_impl)
+
     def seed_barcodes_from_legacy(self) -> int:
         """
         Reuse barcodes from the old `offers_legacy` table (previous project
@@ -569,18 +615,29 @@ class StoreDB:
         return self._run(_impl)
 
     def mark_stale_unavailable(self, hours: int = 48) -> int:
+        """
+        Flip to unavailable the rows a store's LATEST run did not refresh. Per store:
+        a store that has not been scraped at all for a while (another CEP set, a
+        paused schedule) keeps its rows untouched instead of being flipped wholesale.
+        """
         def _impl():
             with self._conn.cursor() as cur:
                 cur.execute(
-                    "UPDATE offers SET is_available = false "
-                    "WHERE is_available IS DISTINCT FROM false AND updated_at < NOW() - make_interval(hours => %s)",
+                    """
+                    UPDATE offers o SET is_available = false
+                    FROM (SELECT store_id, MAX(updated_at) AS last_run FROM offers GROUP BY store_id) r
+                    WHERE o.store_id = r.store_id
+                      AND o.is_available IS DISTINCT FROM false
+                      AND o.updated_at < r.last_run - make_interval(hours => 2)
+                      AND o.updated_at < NOW() - make_interval(hours => %s)
+                    """,
                     (hours,),
                 )
                 n = cur.rowcount
             self._conn.commit()
             return n
         n = self._run(_impl)
-        print(f"  [{self.store_key}] marked {n:,} stale offers unavailable (not seen in {hours}h)")
+        print(f"  [{self.store_key}] marked {n:,} stale offers unavailable (missing from their store's last run, older than {hours}h)")
         return n
 
     def prune_history(self, days: int = 180) -> int:

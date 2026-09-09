@@ -70,6 +70,11 @@ Rules enforced by `db_manager.py`:
 * `promo_end_at` decades in the future (cache TTLs some sites send) is dropped.
 * Connection uses `prepare_threshold=None` so Neon's transaction pooler works.
 
+Multi-store: markets with store-dependent prices (`per_store` in `config.STORES`)
+are scraped once per CEP of `SCRAPE_ZIP_CODES`, each store under its own
+`store_id`; national-price markets use a constant `store_id` and run once.
+Barcodes propagate between stores of the same market (same `product_id`).
+
 Why `(store_id, product_id)` and not the old `market_storehash_barcode` id: the
 old id changed when a barcode was learned later (silent duplicates) and it
 could not represent a product without barcode cleanly. The native product id is

@@ -118,6 +118,14 @@ def run_enrichment(
     (barcode_or_None, http_status_or_None).
     """
     missing = db.load_missing_barcodes(retry_not_found_days=retry_not_found_days, need_url=need_url)
+    # multi-store: the same product_id may be missing in several stores -> fetch once
+    by_pid: Dict[str, List[Tuple[str, str]]] = {}
+    dedup = []
+    for store_id, product_id, url, name in missing:
+        if product_id not in by_pid:
+            dedup.append((store_id, product_id, url, name))
+        by_pid.setdefault(product_id, []).append((store_id, product_id))
+    missing = dedup
     if limit:
         missing = missing[:limit]
     total = len(missing)
@@ -126,7 +134,7 @@ def run_enrichment(
         return {"fetched": 0, "found": 0, "updated": 0}
 
     pool = ThreadSessions(headers=headers, json_accept=json_accept)
-    found_rows: List[Tuple[str, str, str, str]] = []
+    found_rows: List[Tuple[str, str, str]] = []
     state_rows: List[Tuple[str, str, str, Optional[int]]] = []
     fetched = found = updated = blocked = 0
     log_every = max(1, total // 20)
@@ -145,16 +153,17 @@ def run_enrichment(
         for fut in as_completed(futures):
             store_id, product_id, bc, status = fut.result()
             fetched += 1
+            siblings = by_pid.get(product_id) or [(store_id, product_id)]
             if bc:
                 found += 1
-                found_rows.append((store_id, product_id, bc, source))
-                state_rows.append((store_id, product_id, "found", status))
+                found_rows.append((product_id, bc, source))
+                state_rows.extend((s_id, p_id, "found", status) for s_id, p_id in siblings)
             elif status in (200, 404, 410):
                 # the page exists (or is gone) and has no barcode -> retry only after the TTL
-                state_rows.append((store_id, product_id, "not_found", status))
+                state_rows.extend((s_id, p_id, "not_found", status) for s_id, p_id in siblings)
             else:
                 # 403/429/5xx/network: a blocked or failing fetch is NOT "no barcode" -> retry next run
-                state_rows.append((store_id, product_id, "error", status))
+                state_rows.extend((s_id, p_id, "error", status) for s_id, p_id in siblings)
                 blocked += 1
                 if blocked >= 30 and found == 0:
                     print(f"{label}too many blocked fetches (HTTP {status}) - stopping this pass to avoid a ban")
@@ -162,14 +171,14 @@ def run_enrichment(
                         f.cancel()
                     break
             if len(found_rows) >= 300 or len(state_rows) >= 600:
-                updated += db.update_barcodes(found_rows)
+                updated += db.update_barcodes_by_product(found_rows)
                 db.record_enrich_state(state_rows)
                 found_rows.clear()
                 state_rows.clear()
             if fetched % log_every == 0 or fetched == total:
                 print(f"{label}  progress {fetched:>6}/{total} ({100 * fetched / total:5.1f}%) found={found}")
     if found_rows or state_rows:
-        updated += db.update_barcodes(found_rows)
+        updated += db.update_barcodes_by_product(found_rows)
         db.record_enrich_state(state_rows)
     print(f"{label}barcodes found: {found:,}/{total:,}  written: {updated:,}")
     return {"fetched": fetched, "found": found, "updated": updated}

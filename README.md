@@ -40,6 +40,7 @@ python -m main                       # scrape every market in parallel (default 
 python -m main --stores atacadao     # one market
 python -m main --limit 100 --log     # quick test, per-market logs in logs/
 python -m main --zip 04646-000       # another region
+python -m main --zip "08032-230,04646-000"   # several stores for the per-store markets (see docs/OPERATIONS.md)
 python -m main --post                # + mark stale offers unavailable, prune price history
 
 python -m markets.atacadao.scraper_atacadao --limit 50   # run a scraper directly (verbose)

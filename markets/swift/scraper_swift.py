@@ -4,7 +4,7 @@ scraper_swift.py - Swift (https://www.swift.com.br)
 Platform : VTEX (storefront is Remix, catalog is plain VTEX)
 Listing  : GET /api/categories  -> categoryList[].linkId (category slugs)
            GET /api/catalog_system/pub/products/search/{slug}?_from&_to (50/page)
-Store    : prices are national; store_id = swift:<uf>:<city> from the ZIP
+Store    : prices are national; store_id = "swift" whatever the CEP
            (postalcode cookie only affects serviceability).
 Barcode  : inline, items[0].ean (~99.6%) -> Tier 1, no enrichment.
 Runtime  : ~1-2 min (about 1k products).
@@ -18,7 +18,6 @@ from urllib.parse import unquote, urlparse
 
 from markets.common.geo import format_zip, normalize_zip, zip_info
 from markets.common.http import get_json, make_session
-from markets.common.offer import slugify
 from markets.common.vtex import VtexCatalog, vtex_offer
 
 STORE_KEY = "swift"
@@ -45,8 +44,8 @@ def scrape(db, zip_code: str, limit: Optional[int] = None) -> Dict[str, int]:
     session = make_session({"Referer": BASE_URL + "/"})
     zdigits = normalize_zip(zip_code) or "01153000"
     info = zip_info(zdigits, session)
-    store_id = f"swift:{slugify(info.get('state'))}:{slugify(info.get('city'))}" if info else f"swift:cep:{zdigits}"
-    db.save_store_info(store_id, query_zip=format_zip(zdigits), name="Swift (entrega)",
+    store_id = "swift"  # national prices -> one store_id whatever the CEP
+    db.save_store_info(store_id, query_zip=format_zip(zdigits), name="Swift (entrega, national prices)",
                        city=info.get("city"), state=info.get("state"), store_zip=format_zip(zdigits))
     session.cookies.set("postalcode", zdigits, domain="www.swift.com.br")
 

@@ -46,8 +46,33 @@ descriptive `store_id` (Swift, Oba, Sam's Club, Giga, Extra, PdA, Sonda) and
 VipCommerce markets always serve the delivery hub (Rossi, Davo). `store_info`
 keeps what was selected for every `store_id`.
 
-Running the same market for two CEPs keeps both stores' rows (PK is
-`(store_id, product_id)`).
+## Several stores per market (several CEPs)
+
+Prices depend on the store for **Atacadão, Carrefour, Tenda, Higas, X Supermercados
+and Barbosa** (`config.STORES[..]["per_store"] = True`). Give a comma-separated CEP
+list and each of those markets is scraped once per CEP, each store under its own
+`store_id`; the other ten markets have national prices and run once whatever the
+list (their `store_id` is a constant such as `nagumo`, `swift`, `rossi:1:1`).
+
+```bash
+python -m main --zip "08032-230,04646-000,02401-100,06290-170"   # leste, sul, norte, oeste
+SCRAPE_ZIP_CODES=08032-230,04646-000 python -m main              # same, via env / GitHub secret
+python -m markets.atacadao.scraper_atacadao --zip "08032-230,04646-000"
+```
+
+What happens with N stores:
+* rows are keyed by `(store_id, product_id)`; `store_info.query_zip` says which CEP picked each store;
+* barcodes are per product, so a barcode found for one store is copied to the same
+  product in the other stores (`fill_barcodes_from_siblings`, instant) and page-based
+  enrichment fetches each product only once;
+* `mark-stale` works per store: a row is flipped only when its own store's latest run
+  did not refresh it, so stores scraped on different days do not disturb each other;
+* runtime grows linearly for the per-store markets (Atacadão ~9 min per store,
+  Carrefour ~12, Tenda ~7, Higas ~25, X ~3, Barbosa ~5). With 4 CEPs the daily cycle
+  is still well inside the 4-hour schedule slot for every market except Higas, whose
+  API pacing makes it ~100 min - give it its own slot or fewer CEPs.
+* `python -m db.db_manager stores <market>` lists the stores present;
+  `drop-store <market> <store_id>` removes one.
 
 ## Maintenance
 

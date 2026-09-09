@@ -29,6 +29,7 @@ from markets.common.offer import make_offer, parse_brl
 STORE_KEY = "nagumo"
 BASE_URL = "https://www.nagumo.com.br"
 DEFAULT_STORE = "M_13"
+STORE_ID = "nagumo"  # prices are identical in every branch (M_13 vs M_46 checked 2026-09-09) -> one store_id
 DEFAULT_CATEGORIES = ["a%C3%A7ougue", "departamentos/hortifruti", "departamentos/padaria", "mercearia-salgada",
                       "mercearia-doce", "higiene-e-perfumaria", "departamentos/limpeza",
                       "departamentos/laticinios-e-frios", "departamentos/congelados", "bebidas", "pet", "bebe"]
@@ -56,25 +57,25 @@ def resolve_store(session, db, zip_code: str) -> str:
             except ValueError:
                 stores = []
     if not stores or not coords:
-        db.save_store_info(DEFAULT_STORE, query_zip=format_zip(zip_code), name="Nagumo (default store)")
-        print(f"[nagumo] store locator unavailable - using {DEFAULT_STORE}")
-        return DEFAULT_STORE
+        db.save_store_info(STORE_ID, query_zip=format_zip(zip_code), name="Nagumo (online, national prices)")
+        print("[nagumo] store locator unavailable - national catalogue anyway")
+        return STORE_ID
 
     def dist(s):
         lat, lon = to_float(s.get("latitude")), to_float(s.get("longitude"))
         return haversine_km(coords[0], coords[1], lat, lon) if lat is not None and lon is not None else 1e9
 
     best = min(stores, key=dist)
-    store_id = f"M_{best['ID']}"
+    # the nearest branch is recorded for information only; prices and catalogue are national
     db.save_store_info(
-        store_id, query_zip=format_zip(zip_code), name=best.get("name"),
+        STORE_ID, query_zip=format_zip(zip_code), name=f"Nagumo (online) - nearest branch M_{best['ID']} {best.get('name')}",
         address=", ".join(str(p) for p in [best.get("address1"), best.get("address2")] if p) or None,
         city=best.get("city"), state=best.get("stateCode"), store_zip=best.get("postalCode"),
         latitude=best.get("latitude"), longitude=best.get("longitude"),
         payload={k: v for k, v in best.items() if not isinstance(v, (dict, list))},
     )
-    print(f"[nagumo] store {store_id} {best.get('name')} ({best.get('city')}) {dist(best):.1f} km, of {len(stores)}")
-    return store_id
+    print(f"[nagumo] nearest branch M_{best['ID']} {best.get('name')} ({best.get('city')}) {dist(best):.1f} km - store_id {STORE_ID}")
+    return STORE_ID
 
 
 def discover_categories(session) -> List[str]:

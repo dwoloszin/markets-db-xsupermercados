@@ -55,7 +55,8 @@ def run_cli(store_key: str, scrape: Callable, *, enrich: Optional[Callable] = No
             probe: Optional[Callable] = None) -> None:
     parser = argparse.ArgumentParser(description=f"Scrape {store_key} -> PostgreSQL (Neon)")
     parser.add_argument("--limit", type=int, default=None, help="Stop after N products (test mode)")
-    parser.add_argument("--zip", type=str, default=None, help="CEP used to pick the store (default: config/SCRAPE_ZIP_CODE)")
+    parser.add_argument("--zip", type=str, default=None,
+                        help="CEP(s) used to pick the store, comma-separated for several stores (default: config.SCRAPE_ZIP_CODES)")
     parser.add_argument("--env", type=str, default=".env", help=".env file path")
     parser.add_argument("--csv", action="store_true", help="Also export offers to exports/<store>_offers_<ts>.csv")
     parser.add_argument("--workers", type=int, default=12, help="Threads for barcode enrichment")
@@ -68,7 +69,11 @@ def run_cli(store_key: str, scrape: Callable, *, enrich: Optional[Callable] = No
     import config
 
     load_env(args.env)
-    zip_code = args.zip or config.SCRAPE_ZIP_CODE
+    zips = [z.strip() for z in (args.zip or ",".join(config.SCRAPE_ZIP_CODES)).split(",") if z.strip()] or [config.SCRAPE_ZIP_CODE]
+    per_store = bool(config.store_meta(store_key).get("per_store"))
+    if not per_store:
+        zips = zips[:1]  # national prices: one run, whatever the CEP list
+    zip_code = zips[0]
     if args.probe:
         if probe is None:
             print(f"[{store_key}] no probe defined")
@@ -80,21 +85,27 @@ def run_cli(store_key: str, scrape: Callable, *, enrich: Optional[Callable] = No
     ok = True
     try:
         if not args.enrich_only:
-            print(f"[{store_key}] scrape start zip={zip_code} limit={args.limit or 'none'}")
-            result = scrape(db, zip_code, args.limit) or {}
-            elapsed = time.time() - t0
-            print(f"[{store_key}] scrape done in {elapsed / 60:.1f} min: {result}")
-            if not result.get("upserted") and not args.limit:
-                print(f"[{store_key}] ERROR: no offers were saved - failing the run so it is noticed")
-                ok = False
+            for idx, zip_code in enumerate(zips, 1):
+                t_zip = time.time()
+                suffix = "" if len(zips) == 1 else f"  ({idx}/{len(zips)} CEPs, per-store prices)"
+                print(f"[{store_key}] scrape start zip={zip_code} limit={args.limit or 'none'}{suffix}")
+                result = scrape(db, zip_code, args.limit) or {}
+                print(f"[{store_key}] scrape zip={zip_code} done in {(time.time() - t_zip) / 60:.1f} min: {result}")
+                if not result.get("upserted") and not args.limit:
+                    print(f"[{store_key}] ERROR: no offers were saved for {zip_code} - failing the run so it is noticed")
+                    ok = False
             seeded = db.seed_barcodes_from_legacy()
             if seeded:
                 print(f"[{store_key}] barcodes seeded from legacy table: {seeded:,}")
+            sib = db.fill_barcodes_from_siblings()
+            if sib:
+                print(f"[{store_key}] barcodes copied between stores of the market: {sib:,}")
         if enrich is not None and not args.skip_enrich and ok:
             t1 = time.time()
             print(f"[{store_key}] barcode enrichment start (workers={args.workers})")
             stats = enrich(db, workers=args.workers, limit=args.limit) or {}
             print(f"[{store_key}] barcode enrichment done in {(time.time() - t1) / 60:.1f} min: {stats}")
+            db.fill_barcodes_from_siblings()
         db.print_barcode_coverage()
         if args.csv:
             db.export("exports", tables=["offers"])
