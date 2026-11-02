@@ -235,6 +235,9 @@ def _fetch_slug(session, slug: str, seller_id: str, seen: set, limit: Optional[i
 def scrape(db, zip_code: str, limit: Optional[int] = None) -> Dict[str, int]:
     session = make_session({"Referer": BASE_URL + "/"})
     seller_id = resolve_store(session, db, zip_code)
+    if not db.begin_store(seller_id):
+        print(f"[atacadao] store {seller_id} already scraped in this run (another CEP maps to it) - skipping")
+        return {"upserted": 0, "skipped": 0, "with_barcode": 0, "duplicate_store": True}
     slugs = discover_slugs(session)
     print(f"[atacadao] seller={seller_id} slugs={len(slugs)}")
     seen: set = set()

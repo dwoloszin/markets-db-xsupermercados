@@ -33,7 +33,7 @@ import time
 from typing import Any, Dict, List, Optional, Tuple
 
 from markets.common.geo import format_zip, haversine_km, normalize_zip, to_float, zip_coords
-from markets.common.http import get_json, looks_like_challenge, make_session
+from markets.common.http import RateLimited, get_json, looks_like_challenge, make_session
 from markets.common.offer import make_offer
 
 STORE_KEY = "higas"
@@ -43,7 +43,7 @@ DEFAULT_SUBDOMAIN = "supermercadohigas6"
 API_V5 = "https://api.ibecom.com.br/api_ecommerce/v5"
 IMAGE_BASE = "https://assets.ibecom.com.br/ib.item.image.medium/m-"
 PAGE_LIMIT = 30
-DELAY = float(os.getenv("HIGAS_DELAY", "2.5"))
+DELAY = float(os.getenv("HIGAS_DELAY", "4.0"))
 BACKOFF = float(os.getenv("HIGAS_BACKOFF", "300"))
 
 
@@ -135,6 +135,9 @@ def scrape(db, zip_code: str, limit: Optional[int] = None) -> Dict[str, int]:
     session = make_session()
     store = resolve_store(session, db, zip_code)
     store_id = str(store["id"])
+    if not db.begin_store(store_id):
+        print(f"[higas] store {store_id} already scraped in this run (another CEP maps to it) - skipping")
+        return {"upserted": 0, "skipped": 0, "with_barcode": 0, "duplicate_store": True}
     subdomain = store.get("subdomain") or DEFAULT_SUBDOMAIN
     web_base = f"https://{subdomain}.instabuy.app.br"
     headers = {"x-store-id": store_id, "Origin": web_base, "Referer": web_base + "/", "Accept": "application/json",
@@ -166,12 +169,12 @@ def scrape(db, zip_code: str, limit: Optional[int] = None) -> Dict[str, int]:
                 continue
             text = r.text if hasattr(r, "text") else ""
             if r.status_code == 403 and "bloqueado" in text.lower():
-                raise RuntimeError("Higas: API answered 'Acesso bloqueado' (IP banned for a while). "
-                                   "Increase HIGAS_DELAY or run later / from another IP.")
+                raise RateLimited("Higas: API answered 'Acesso bloqueado' (IP banned for a while). "
+                                  "Increase HIGAS_DELAY or run later / from another IP.")
             if r.status_code != 200 or looks_like_challenge(text):
                 soft_errors += 1
                 if soft_errors > 8:
-                    raise RuntimeError(f"Higas: too many HTTP {r.status_code} answers - giving up for this run")
+                    raise RateLimited(f"Higas: too many HTTP {r.status_code} answers - IP throttled, stopping this run")
                 wait = BACKOFF * min(soft_errors, 4)
                 print(f"[higas] {label} page {page}: HTTP {r.status_code} - cooldown {wait:.0f}s")
                 time.sleep(wait)
@@ -259,6 +262,9 @@ def probe(zip_code: str) -> None:
 
 
 class _NullDB:
+    def begin_store(self, *a, **k):
+        return True
+
     def save_store_info(self, *a, **k):
         pass
 

@@ -248,6 +248,7 @@ class StoreDB:
         self._url = url
         self._conn = self._connect()
         self._ensure_tables()
+        self.stores_started: set = set()  # store_ids scraped in this process (several CEPs -> same store)
 
     # ---------------------------------------------------------------- basics
     def _connect(self) -> psycopg.Connection:
@@ -308,6 +309,15 @@ class StoreDB:
         print(f"[{self.store_key}] DB ready ({self._url.split('@')[-1].split('/')[0]})")
 
     # ----------------------------------------------------------- store info
+    def begin_store(self, store_id: str) -> bool:
+        """True the first time a store_id is scraped in this run; False when another CEP of the
+        same run already resolved to it (per-store scrapers then skip the duplicate)."""
+        sid = str(store_id)
+        if sid in self.stores_started:
+            return False
+        self.stores_started.add(sid)
+        return True
+
     def save_store_info(self, store_id: str, *, query_zip: str, name: Any = None, address: Any = None,
                         city: Any = None, state: Any = None, store_zip: Any = None,
                         latitude: Any = None, longitude: Any = None, payload: Any = None) -> None:

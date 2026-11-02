@@ -47,6 +47,15 @@ Conventions: `CEP` = 8-digit ZIP; "inline" = barcode present in the listing;
 * Barcode: `material` or `sku` when 12-14 valid digits (`barcode_source = inline`).
 * Runtime: ~15-25 min (SKU-exclusion pagination grows the request body).
 
+## Hiper Bergamini - `markets/bergamini` (VipCommerce, org 282)
+
+* Same API and shared login key as Rossi; domain `hiperbergamini.com.br`, org 282.
+* CD 1 = Hipermercado Bergamini (Jacana); CD 2 = "Supermercado Ourinhos" (Tremembe), a different
+  banner with its own catalogue (8/160 products in common, same prices). CD 1 only,
+  store_id `bergamini:1:1`, national prices.
+* 16 departments, ~14.2k products, `codigo_barras` on every product, ~99% valid GTIN.
+  ~10 min. Added 2026-09-22.
+
 ## Carrefour Mercado - `markets/carrefour` (VTEX FastStore, HTML route)
 
 * Region: `POST https://mercado.carrefour.com.br/action/cep {CEP}` -> city;
@@ -65,6 +74,22 @@ Conventions: `CEP` = 8-digit ZIP; "inline" = barcode present in the listing;
   products). Produce has PLU codes (`"gtin":"2062"`) -> stays NULL (~5%).
 * GraphQL `/api/graphql` and `/api/catalog_system` answer 503/403 captcha outside a browser.
 * Runtime: ~12 min listing (385 leaves, 4 threads) + PDP enrichment for new products.
+
+## Coop - `markets/coop` (VTEX IO, per-store prices)
+
+* Catalog API on `www.coopsupermercado.com.br` (33 departments, 31 segments, ~7.2k products,
+  `items[0].ean` on every product, ~87% valid GTIN - produce has PLU codes). **The catalog price
+  is not the selling price.**
+* Stores: 11 white-label sellers `coopsp<xx>`; `/api/checkout/pub/regions` returns all 11 for
+  every CEP, so the nearest store is chosen from `/api/checkout/pub/pickup-points` coordinates
+  (6 sellers have a pickup point AND price a basket; pickup-only points answer an empty
+  simulation). store_id = seller id (`coopspbm` Barao de Maua, `coopspid` Industrial, ...).
+* Prices: `POST /api/checkout/pub/orderForms/simulation?sc=1` with up to 50 `{id, seller}` items
+  (more are silently truncated to 50) -> `listPrice`, `sellingPrice`, `availability`,
+  `unitMultiplier`. Measured 2026-09-22: the same product costs 6.79-7.79 across sellers (~15%).
+  Weighed items: listPrice is per kg, sellingPrice includes the multiplier - compare
+  `sellingPrice` with `listPrice * unitMultiplier` or every weighed item looks like a 90% promo.
+* ~5 min per store (145 catalog calls + 145 simulations). Added 2026-09-22.
 
 ## Davo - `markets/davo` (VipCommerce, org 399)
 
@@ -127,6 +152,31 @@ Conventions: `CEP` = 8-digit ZIP; "inline" = barcode present in the listing;
   comes from `offers_legacy` (name/url match) and `tools/crossfill_barcodes.py`.
 * Runtime: ~25 min (about 520 calls at 2.5 s).
 
+## Hirota - `markets/hirota` (VipCommerce, org 171)
+
+* Same API and shared login key as Rossi; domain `lojahirota.com.br`, org 171.
+* 4 delivery hubs (CD 1 Nazaré/Ipiranga 9.8k items, 2 Granja Viana 8.8k, 3 São Bernardo 9.4k,
+  4 Morumbi 9.6k) with identical prices (0-1 differing product in 130+ common, 2026-09-22);
+  CDs 5-12 are "Encomenda" pickup stores with ~16 order-only items. Scraped from CD 1,
+  store_id `hirota:1:1`, national prices.
+* 21 departments, `codigo_barras` on every product, ~97.6% valid GTIN. ~5 min.
+
+## Mambo - `markets/mambo` (VTEX IO)
+
+* Catalog API on `www.mambo.com.br` (account `mambodelivery`): one root category "Mambo",
+  14 departments, 33 segments, ~18k products. `items[0].ean` on every product, ~92% valid GTIN
+  (produce/butcher/bakery carry `2000xxx` PLU codes).
+* 9 stores = sellers `mambodelivery2xx` (pickup-points lists them); regions maps a CEP to one
+  store and some CEPs are unserved. Checkout simulation of 150 SKUs on 3 stores: 1 difference ->
+  national prices, store_id `mambo`, catalog seller `1`. Added 2026-10-27.
+
+## Master Supermercados - `markets/master` (VipCommerce, org 193)
+
+* Same API and shared login key as Rossi; domain `lojaonline.mastersupermercados.com.br`, org 193.
+* One distribution centre (Master Matriz, Erechim RS) -> store_id `master:1:1`, national prices.
+* 15 departments, ~22.3k products, `codigo_barras` on every product, ~99% valid GTIN.
+  ~15 min. Added 2026-10-20.
+
 ## Nagumo - `markets/nagumo` (Salesforce Commerce Cloud)
 
 * Store: `GET /on/demandware.store/Sites-Nagumo-Site/pt_BR/Stores-FindStores?lat=&long=&radius=100`
@@ -178,6 +228,15 @@ Conventions: `CEP` = 8-digit ZIP; "inline" = barcode present in the listing;
   without regionId = not sold any more); rows without price are not offers and are skipped.
   ~7 min.
 
+## Casa Santa Luzia - `markets/santaluzia` (VTEX IO)
+
+* Catalog API on `www.santaluzia.com.br` (25 departments, 44 segments, ~15.8k products).
+* Single online store: regions returns no sellers for any CEP; catalog seller `1` ->
+  store_id `santaluzia`, national prices.
+* `items[0].ean` on ~95%. Imported goods carry genuine EAN-8 codes, so GTIN-8 is accepted
+  (89.8% valid without it, 95.3% with it). The host sometimes resets TLS handshakes;
+  request_with_retry absorbs it, pace 0.2 s. ~10 min. Added 2026-10-27.
+
 ## Sonda Delivery - `markets/sonda` (ASP.NET HTML)
 
 * Categories: `GET https://www.sondadelivery.com.br/delivery` -> `/delivery/categoria/<slug>` "Ver Todos".
@@ -186,6 +245,25 @@ Conventions: `CEP` = 8-digit ZIP; "inline" = barcode present in the listing;
   nowhere, PDP included) so `regular_price` is derived as `price / (1 - pct)`; EAN in
   `/sku/<sku>/<size>/<EAN>.png`; next page `#ctl00_conteudo_linkPaginaProxima`.
 * Barcode: image path (~41%, `image`) + PDP JSON-LD `gtin` (`pdp`). ~18k products, ~15 min listing.
+
+## Spani - `markets/spani` (VipCommerce, org 67)
+
+* Same API and shared login key as Rossi; domain `spanionline.com.br`, filial 1, org 67
+  (resolved by `organizacoes/filiais/dominio/spanionline.com.br`).
+* 14 departments, ~4k products, 20/page. `codigo_barras` on every product, ~95% valid GTIN
+  (weighed items carry 4-digit PLU codes). Prices: `preco`, `preco_original`, `oferta.preco_oferta`.
+* store_id `spani:1:1` (delivery hub, national prices). Added 2026-09-22.
+
+## St. Marche - `markets/marche` (Shopify)
+
+* `marche.com.br` is a Hydrogen/Oxygen front-end without `products.json`; the Shopify domain
+  `checkout.marche.com.br` serves `products.json?limit=250&page=N` (61 pages, ~15.2k) with
+  price / compare_at_price / available but NO barcode key in the bulk variants.
+* Barcode: `products/<handle>.json` -> `variants[0].barcode`, a `;`-separated list (supplier
+  codes, UPC-12, EAN-13s); `pick_gtin` prefers a valid EAN-13. 95% valid GTIN, 77% EAN-13.
+  Enrichment step, 6 threads, ~14 s per 120 products, no throttling seen.
+* "Selecione uma loja" only changes fulfilment (Shopify has one price per variant) ->
+  national prices, store_id `marche`. Added 2026-09-22.
 
 ## Swift - `markets/swift` (VTEX behind Remix)
 
@@ -205,6 +283,25 @@ Conventions: `CEP` = 8-digit ZIP; "inline" = barcode present in the listing;
 * Product: `id`, `name`, `barcode`, `price`, `wholesalePrices[]{price,minQuantity}`,
   `promotions[]{price,type}`, `photos[]`, `brand`, `department`, `url`, `inventory[]{branchId,totalAvailable}`.
 * Barcode inline (~98%). Runtime ~8-10 min.
+
+## Zaffari - `markets/zaffari` (VTEX IO)
+
+* Standard VTEX catalog API on `www.zaffari.com.br` (12 departments, 21 segments, ~15.2k products).
+* Store picker = VTEX regionalization: `/api/checkout/pub/regions?postalCode=` returns the same
+  5 Porto Alegre store sellers (`zaffari1110/1240/1380/1410/1510`) for every CEP; the catalog
+  answers with placeholder seller `1`. Checkout simulation on the same SKU: identical price on
+  all sellers, only stock differs -> national prices, store_id `zaffari`. Only `sc=1` exists.
+* Barcode inline `items[0].ean` on every product, ~97.5% valid GTIN (weighed items carry
+  `0000020...` PLU codes). ~5 min. Added 2026-09-22.
+
+## Violeta Express - `markets/violeta` (VipCommerce, org 121)
+
+* Same API and shared login key as Rossi; domain `violetaexpress.com.br`, org 121.
+* 3 stores (CD 1 Loja 01 Vila Gomes, CD 2 Loja 06 Vila Palmeiras, CD 11 Loja 10 Jardim Iris)
+  plus "CD Express" hubs, identical prices (0-4 differing products in 75-137 common,
+  2026-09-22) -> CD 1, store_id `violeta:1:1`, national prices.
+* 13 departments, ~10.4k products, `codigo_barras` on every product but only ~71% valid GTIN:
+  butcher/produce/bakery carry 1-5 digit internal codes. ~5 min. Added 2026-09-22.
 
 ## X Supermercados - `markets/xsupermercados` (applay)
 

@@ -190,6 +190,9 @@ def _fetch_category(pool: ThreadSessions, category: str, store_id: str, cookies:
 def scrape(db, zip_code: str, limit: Optional[int] = None) -> Dict[str, int]:
     session = make_session(HTML_HEADERS, json_accept=False)
     store_id = regionalize(session, db, zip_code)
+    if not db.begin_store(store_id):
+        print(f"[carrefour] store {store_id} already scraped in this run (another CEP maps to it) - skipping")
+        return {"upserted": 0, "skipped": 0, "with_barcode": 0, "duplicate_store": True}
     cookies = {c.name: c.value for c in session.cookies}
     categories = discover_categories(session)
     print(f"[carrefour] {len(categories)} categories, store_id={store_id}")

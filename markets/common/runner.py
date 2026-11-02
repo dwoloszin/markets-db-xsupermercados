@@ -69,10 +69,20 @@ def run_cli(store_key: str, scrape: Callable, *, enrich: Optional[Callable] = No
     import config
 
     load_env(args.env)
-    zips = [z.strip() for z in (args.zip or ",".join(config.SCRAPE_ZIP_CODES)).split(",") if z.strip()] or [config.SCRAPE_ZIP_CODE]
+    # config was imported before .env was loaded: read the CEP list from the environment now
+    import os
+    env_zips = os.getenv("SCRAPE_ZIP_CODES") or os.getenv("SCRAPE_ZIP_CODE") or ",".join(config.SCRAPE_ZIP_CODES)
+    zips = [z.strip() for z in (args.zip or env_zips).split(",") if z.strip()] or [config.SCRAPE_ZIP_CODE]
     per_store = bool(config.store_meta(store_key).get("per_store"))
     if not per_store:
         zips = zips[:1]  # national prices: one run, whatever the CEP list
+    elif len(zips) > 1:
+        # Rotate the starting CEP every 4-hour slot so that, when an IP-wide rate limit
+        # (Higas) cuts a run short, every store gets its turn at the front over the day.
+        start = int(time.time() // (4 * 3600)) % len(zips)
+        zips = zips[start:] + zips[:start]
+        if start:
+            print(f"[{store_key}] CEP order rotated for this slot: {', '.join(zips)}")
     zip_code = zips[0]
     if args.probe:
         if probe is None:
@@ -83,15 +93,34 @@ def run_cli(store_key: str, scrape: Callable, *, enrich: Optional[Callable] = No
     t0 = time.time()
     db = open_store_db(store_key)
     ok = True
+    saved_any = False
     try:
         if not args.enrich_only:
+            from markets.common.http import RateLimited
             for idx, zip_code in enumerate(zips, 1):
                 t_zip = time.time()
                 suffix = "" if len(zips) == 1 else f"  ({idx}/{len(zips)} CEPs, per-store prices)"
                 print(f"[{store_key}] scrape start zip={zip_code} limit={args.limit or 'none'}{suffix}")
-                result = scrape(db, zip_code, args.limit) or {}
+                try:
+                    result = scrape(db, zip_code, args.limit) or {}
+                except RateLimited as exc:
+                    # IP-wide throttle/ban: the remaining CEPs share this IP, so retrying
+                    # them now only extends the ban. Keep the stores already saved and stop;
+                    # a later run (GitHub gives a fresh runner IP) refreshes the rest.
+                    print(f"[{store_key}] rate-limited: {exc}")
+                    if saved_any:
+                        print(f"[{store_key}] {idx - 1}/{len(zips)} store(s) refreshed this run; "
+                              f"the rest recover on the next scheduled run (fresh IP)")
+                    else:
+                        print(f"[{store_key}] no store saved before the throttle - failing the run so it is noticed")
+                        ok = False
+                    break
                 print(f"[{store_key}] scrape zip={zip_code} done in {(time.time() - t_zip) / 60:.1f} min: {result}")
-                if not result.get("upserted") and not args.limit:
+                if result.get("upserted"):
+                    saved_any = True
+                elif result.get("duplicate_store"):
+                    pass  # this CEP resolved to a store already scraped in this run
+                elif not args.limit:
                     print(f"[{store_key}] ERROR: no offers were saved for {zip_code} - failing the run so it is noticed")
                     ok = False
             seeded = db.seed_barcodes_from_legacy()

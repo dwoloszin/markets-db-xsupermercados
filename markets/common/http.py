@@ -28,6 +28,13 @@ DEFAULT_UA = (
 RETRY_STATUSES = {429, 500, 502, 503, 504}
 
 
+class RateLimited(RuntimeError):
+    """The site rate-limited or IP-banned us. The caller should stop this run
+    (retrying only extends the ban); a later run from a fresh IP recovers.
+    Distinguished from a normal RuntimeError so the CEP loop can keep whatever
+    stores it already saved and still exit green."""
+
+
 def make_session(headers: Optional[Dict[str, str]] = None, *, json_accept: bool = True) -> requests.Session:
     s = requests.Session()
     base = {

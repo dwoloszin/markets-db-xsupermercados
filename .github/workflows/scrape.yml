@@ -11,6 +11,13 @@
 
 name: Scrape
 
+# GitHub disables a scheduled workflow after 60 days with no repository activity, and a
+# schedule firing does not count as activity. These repos only write to Neon, so nothing
+# commits to them after a deploy. The "Keep-alive commit" step below fixes that, and needs
+# write access because the default GITHUB_TOKEN is read-only here.
+permissions:
+  contents: write
+
 concurrency:
   group: scrape
   cancel-in-progress: false
@@ -36,6 +43,12 @@ on:
         options: ["false", "true"]
       probe:
         description: "Run the market's endpoint diagnostics instead of scraping"
+        required: false
+        default: "false"
+        type: choice
+        options: ["false", "true"]
+      force_keepalive:
+        description: "Push the keep-alive commit now, even if a recent commit exists (test)"
         required: false
         default: "false"
         type: choice
@@ -89,3 +102,22 @@ jobs:
           name: logs
           path: logs/
           retention-days: 7
+
+      - name: Keep-alive commit
+        # Runs whatever the scrape outcome was. Commits only when the newest commit is over
+        # 30 days old, so each repo gets about one commit a month instead of one per run.
+        # A push that fails turns the run red and the next run tries again.
+        if: always()
+        shell: bash
+        run: |
+          age_days=$(( ( $(date +%s) - $(git log -1 --format=%ct) ) / 86400 ))
+          echo "Newest commit is $age_days days old"
+          if [ "$age_days" -lt 30 ] && [ "${{ inputs.force_keepalive }}" != "true" ]; then
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          date -u +"%Y-%m-%dT%H:%M:%SZ" > .last_run
+          git add .last_run
+          git commit -m "chore: keep-alive (prevents GitHub's 60-day inactivity auto-disable)"
+          git push

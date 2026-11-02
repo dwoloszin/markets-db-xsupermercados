@@ -54,6 +54,10 @@ Things we paid for in hours of debugging. Read before writing or fixing a scrape
   `items?category_id=<menu department id>&limit=30&page=N`. Unknown query params
   are silently ignored (same totals) - always compare totals between two filter
   values before trusting a parameter. No barcode field any more.
+  A sustained multi-CEP run trips the limiter around store 3; the scraper now raises
+  `markets.common.http.RateLimited`, which `run_cli` treats as "stop the CEP loop but
+  keep the stores already saved" - a partial Higas run is green, not red, and the
+  unreached stores recover on the next run's fresh IP. Default pace restored to 4 s.
 * **When a site blocks your IP**, do not keep testing from it: the `--probe`
   mode runs a market's endpoint checks on a GitHub runner (fresh IP) in 3 minutes
   (`gh workflow run scrape.yml --repo <org>/markets-db-<market> -f probe=true`,
